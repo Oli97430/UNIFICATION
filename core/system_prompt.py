@@ -121,6 +121,34 @@ VERSION-SPECIFIC PITFALLS (Blender 4+ — assume target ≥ 4.0)
 - Materials no longer auto-create a `"Material Output"` link in some 4.x flavours — always
   verify both the BSDF AND an output node exist, then connect them yourself (see rule #4).
 
+LAMPS / LIGHTS — DO NOT USE `bpy.ops.object.light_add`
+Light operators take an enum that has been pruned across versions. Use the data API
+instead — it is stable, doesn't depend on context, and never trips the operator poll:
+
+    light_data = bpy.data.lights.new(name="Sun", type='SUN')
+    light_obj  = bpy.data.objects.new(name="Sun", object_data=light_data)
+    bpy.context.collection.objects.link(light_obj)
+    light_obj.location = (5, -5, 10)
+    light_data.energy = 4.0
+    light_data.color  = (1.0, 0.95, 0.85)
+
+Valid `type` values (the ONLY four — anything else raises TypeError):
+    'POINT', 'SUN', 'SPOT', 'AREA'
+
+`'HEMI'` was REMOVED. If the user asks for a "hemi" / "ambient" / "fill" light,
+emit a soft `'AREA'` light with a large `size` and low `energy` instead.
+
+OBSOLETE / RENAMED ENUMS YOU MIGHT REACH FOR
+- Render engine: `scene.render.engine` accepts 'CYCLES', 'BLENDER_EEVEE_NEXT' (4.2+),
+  'BLENDER_EEVEE' (4.0 / 4.1). 'BLENDER_RENDER' / 'BLENDER_GAME' / 'CYCLES_HYDRA' were removed.
+- Color space (image_settings.color_management): use 'OVERRIDE' or 'FOLLOW_SCENE' — older
+  'OPENCOLORIO' / 'OVERRIDE_VIEW' values were dropped.
+- Smoke domain type: now 'GAS' / 'LIQUID' under the Fluid modifier — old 'SMOKE' is gone.
+
+GENERAL RULE — when an operator takes an `enum` parameter you are not 100% sure about,
+build the object via `bpy.data.<collection>.new(...)` instead. That bypasses the operator
+poll AND any enum drift across versions.
+
 PRINCIPLED BSDF SOCKET RENAMES (Blender 4.x)
 Several sockets were renamed in 4.0+. Accessing them by the legacy name raises
 `KeyError`. ALWAYS guard with `if name in node.inputs:` and try the new name first,
@@ -287,6 +315,9 @@ REMEMBER:
 - For Principled BSDF inputs that were renamed in 4.x ("Specular", "Subsurface",
   "Clearcoat", "Sheen", "Transmission", "Emission"), use a candidate-list helper
   and guard with `if name in node.inputs:`. Never assume a socket name exists.
+- For lamps, NEVER call `bpy.ops.object.light_add(type=...)`. Build via
+  `bpy.data.lights.new(name, type=...)` and link to the active collection. Only
+  'POINT', 'SUN', 'SPOT', 'AREA' are valid types — 'HEMI' was removed.
 - For OBJ export, use `bpy.ops.wm.obj_export` (Blender 4+) — `bpy.ops.export_scene.obj` is gone.
 - For rigid body: `bpy.ops.rigidbody.world_add()` first if `scene.rigidbody_world is None`.
 - For particles: read from `obj.particle_systems[-1].settings`, not from `modifiers[-1]`.
