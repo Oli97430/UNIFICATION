@@ -114,6 +114,59 @@ BLENDER API GUIDELINES
 8. Defensive coding: assume the scene state is unknown. Look up objects by name with
    `bpy.data.objects.get("Cube")` rather than assuming `bpy.context.active_object`.
 
+VERSION-SPECIFIC PITFALLS (Blender 4+ — assume target ≥ 4.0)
+- The OBJ exporter was MOVED. Use `bpy.ops.wm.obj_export(filepath=...)` — NOT
+  `bpy.ops.export_scene.obj(...)` (removed in 4.0). Same for FBX: `bpy.ops.export_scene.fbx`
+  is still valid; for glTF use `bpy.ops.export_scene.gltf`.
+- The Cycles `principled.subsurface` socket was renamed; on a fresh Principled BSDF in 4.x
+  the input is `"Subsurface Weight"`, not `"Subsurface"`. When in doubt, set values via
+  `bsdf.inputs[idx].default_value` after locating the socket by name.
+- Materials no longer auto-create a `"Material Output"` link in some 4.x flavours — always
+  verify both the BSDF AND an output node exist, then connect them yourself (see rule #4).
+
+RIGID BODY / PHYSICS
+- Before tagging objects as `RIGID_BODY`, the rigid body world MUST exist on the scene:
+      if bpy.context.scene.rigidbody_world is None:
+          bpy.ops.rigidbody.world_add()
+- Then for each object: select it (override is auto-handled), and call
+  `bpy.ops.rigidbody.object_add(type='ACTIVE')` (or `'PASSIVE'` for the ground).
+- Set the simulation length via `scene.rigidbody_world.point_cache.frame_end`.
+- Bake with `bpy.ops.ptcache.bake_all(bake=True)` if you need deterministic playback.
+
+PARTICLE SYSTEMS
+- API tree is verbose. The canonical pattern:
+      ps = obj.modifiers.new(name="Scatter", type='PARTICLE_SYSTEM')
+      psys = obj.particle_systems[-1]               # NOT obj.modifiers[-1].particle_system
+      st = psys.settings
+      st.type = 'HAIR'
+      st.count = 200
+      st.render_type = 'OBJECT'
+      st.instance_object = bpy.data.objects['MyIcosphere']
+      st.use_advanced_hair = True
+- For HAIR, you typically don't need to bake — set `count`, `hair_length`, then it shows up.
+
+BMESH
+- Always pair a `bmesh.new()` with `bm.to_mesh(mesh)` + `bm.free()` to release the buffer.
+- For 2D / planar geometry, build with `bmesh.ops.create_grid` or build verts/edges/faces by
+  hand, then `bmesh.ops.recalc_face_normals(bm, faces=bm.faces)`.
+
+GEOMETRY NODES
+- Add via modifier: `mod = obj.modifiers.new(name="GN", type='NODES')`.
+- Create a fresh node group with `bpy.data.node_groups.new(name=..., type='GeometryNodeTree')`.
+- Inputs/outputs use the new `interface` API in 4.x:
+      group.interface.new_socket(name='Geometry', in_out='INPUT',  socket_type='NodeSocketGeometry')
+      group.interface.new_socket(name='Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+  (Do NOT use `group.inputs.new(...)` — that was the 3.x API and is gone in 4.x.)
+
+CAMERAS / TURNTABLES
+- For a turntable around the active object: parent an Empty to the object's location, parent
+  the camera to the empty, then keyframe the empty's `rotation_euler.z` from 0 → 2π over the
+  desired frame range. Set the scene camera with `scene.camera = cam_obj`.
+
+SHAPE KEYS
+- `obj.shape_key_add(name="Basis")` first if no Basis exists, then add named keys.
+  Modify `key.data[i].co` to deform the per-vertex offsets, set `key.value` for the slider.
+
 ERROR HANDLING
 - Wrap risky blocks in try/except and append a structured error to `result`.
 - If the request is ambiguous, make a sensible default choice and note it in `result["assumptions"]`.
@@ -193,4 +246,9 @@ REMEMBER:
   VIEW_3D temp_override; you do not need to add one.
 - For shader nodes, look them up by `.type` (e.g. 'BSDF_PRINCIPLED', 'OUTPUT_MATERIAL'),
   never by name — names are locale- and version-dependent and may be missing.
+- For OBJ export, use `bpy.ops.wm.obj_export` (Blender 4+) — `bpy.ops.export_scene.obj` is gone.
+- For rigid body: `bpy.ops.rigidbody.world_add()` first if `scene.rigidbody_world is None`.
+- For particles: read from `obj.particle_systems[-1].settings`, not from `modifiers[-1]`.
+- For geometry nodes interface: `group.interface.new_socket(...)`, NOT `group.inputs.new(...)`.
+- Always pair `bmesh.new()` with `bm.to_mesh(mesh)` + `bm.free()`.
 """
