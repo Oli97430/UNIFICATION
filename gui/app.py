@@ -433,6 +433,18 @@ class OllamaToBlenderApp(ctk.CTk):
             "Set up a soft golden-hour sun, then render a 720p preview from the camera",
             # Cleanup — uses the data-API path the system prompt now teaches
             "Wipe the scene, then add a single Suzanne with a brushed-copper Principled BSDF material",
+            # Low-level modeling with bmesh
+            "Use bmesh to build a custom hex-grid floor (8×8 cells, hex radius 0.5) centred at origin",
+            # Camera setup + procedural orbit animation
+            "Add a 35mm camera 8 m from origin and animate a 120-frame turntable around the active object",
+            # Modifier stack composition
+            "Apply Subdivision (viewport level 3), Bevel (width 0.04), then Wireframe to the active mesh",
+            # Physics simulation — rigid body
+            "Drop 20 random-coloured cubes onto a passive ground plane with rigid body physics over 60 frames",
+            # Particle / scatter system
+            "Scatter 200 small icospheres across the surface of the active mesh with a hair particle system",
+            # Filesystem / batch export
+            "Export every visible mesh to a separate .obj file under a new 'export/' folder next to the .blend",
         ]
         sug_frame = ctk.CTkFrame(self.empty_state, fg_color="transparent")
         sug_frame.pack(pady=24)
