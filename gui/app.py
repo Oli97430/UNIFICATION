@@ -52,7 +52,7 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 class OllamaToBlenderApp(ctk.CTk):
     APP_TITLE = "OllamaToBlender"
-    APP_VERSION = "1.0.1"
+    APP_VERSION = "1.0.2"
 
     def __init__(self) -> None:
         super().__init__()

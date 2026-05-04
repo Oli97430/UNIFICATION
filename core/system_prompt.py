@@ -118,11 +118,49 @@ VERSION-SPECIFIC PITFALLS (Blender 4+ — assume target ≥ 4.0)
 - The OBJ exporter was MOVED. Use `bpy.ops.wm.obj_export(filepath=...)` — NOT
   `bpy.ops.export_scene.obj(...)` (removed in 4.0). Same for FBX: `bpy.ops.export_scene.fbx`
   is still valid; for glTF use `bpy.ops.export_scene.gltf`.
-- The Cycles `principled.subsurface` socket was renamed; on a fresh Principled BSDF in 4.x
-  the input is `"Subsurface Weight"`, not `"Subsurface"`. When in doubt, set values via
-  `bsdf.inputs[idx].default_value` after locating the socket by name.
 - Materials no longer auto-create a `"Material Output"` link in some 4.x flavours — always
   verify both the BSDF AND an output node exist, then connect them yourself (see rule #4).
+
+PRINCIPLED BSDF SOCKET RENAMES (Blender 4.x)
+Several sockets were renamed in 4.0+. Accessing them by the legacy name raises
+`KeyError`. ALWAYS guard with `if name in node.inputs:` and try the new name first,
+falling back to the legacy name. Or use a small helper:
+
+    def _set(node, candidates, value):
+        # candidates is a list ordered new→legacy; the first one that exists wins
+        for name in candidates:
+            if name in node.inputs:
+                node.inputs[name].default_value = value
+                return True
+        return False
+
+The renames you must handle (left = legacy 3.x, right = current 4.x):
+
+    "Subsurface"            → "Subsurface Weight"
+    "Subsurface Color"      → "Subsurface Radius" (semantics changed; usually skip)
+    "Specular"              → "Specular IOR Level"
+    "Specular Tint"         → "Specular Tint"          (still exists; type changed to color)
+    "Transmission"          → "Transmission Weight"
+    "Clearcoat"             → "Coat Weight"
+    "Clearcoat Roughness"   → "Coat Roughness"
+    "Clearcoat Normal"      → "Coat Normal"
+    "Sheen"                 → "Sheen Weight"
+    "Sheen Tint"            → "Sheen Tint"             (type changed to color)
+    "Emission"              → "Emission Color"
+    "Emission Strength"     → "Emission Strength"      (unchanged)
+
+Stable across versions (always present on a Principled BSDF):
+    "Base Color", "Metallic", "Roughness", "IOR", "Alpha", "Normal".
+
+Concrete example (writing a brushed copper material safely):
+
+    bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    bsdf.inputs["Base Color"].default_value = (0.86, 0.42, 0.20, 1.0)
+    bsdf.inputs["Metallic"].default_value   = 1.0
+    bsdf.inputs["Roughness"].default_value  = 0.35
+    _set(bsdf, ["Specular IOR Level", "Specular"], 0.5)
+    _set(bsdf, ["Coat Weight",        "Clearcoat"], 0.1)
+    _set(bsdf, ["Sheen Weight",       "Sheen"], 0.0)
 
 RIGID BODY / PHYSICS
 - Before tagging objects as `RIGID_BODY`, the rigid body world MUST exist on the scene:
@@ -246,6 +284,9 @@ REMEMBER:
   VIEW_3D temp_override; you do not need to add one.
 - For shader nodes, look them up by `.type` (e.g. 'BSDF_PRINCIPLED', 'OUTPUT_MATERIAL'),
   never by name — names are locale- and version-dependent and may be missing.
+- For Principled BSDF inputs that were renamed in 4.x ("Specular", "Subsurface",
+  "Clearcoat", "Sheen", "Transmission", "Emission"), use a candidate-list helper
+  and guard with `if name in node.inputs:`. Never assume a socket name exists.
 - For OBJ export, use `bpy.ops.wm.obj_export` (Blender 4+) — `bpy.ops.export_scene.obj` is gone.
 - For rigid body: `bpy.ops.rigidbody.world_add()` first if `scene.rigidbody_world is None`.
 - For particles: read from `obj.particle_systems[-1].settings`, not from `modifiers[-1]`.
