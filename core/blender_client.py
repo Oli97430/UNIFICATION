@@ -21,26 +21,65 @@ def _is_brushes_new_call(call: ast.Call) -> bool:
     return isinstance(root, ast.Name) and root.id == "bpy"
 
 
-class _BrushApiFixer(ast.NodeTransformer):
-    """Strip the removed `tool=` kwarg from `bpy.data.brushes.new(...)` calls.
+_BRUSH_MODES = {
+    "SCULPT", "TEXTURE_PAINT", "VERTEX_PAINT", "WEIGHT_PAINT",
+    "IMAGE_PAINT", "GPENCIL_PAINT", "GPENCIL_VERTEX",
+    "GPENCIL_SCULPT", "GPENCIL_WEIGHT",
+}
 
-    `BlendDataBrushes.new()` in Blender 4.x only accepts (name, mode); the
-    `tool` kwarg was removed. If the call result is assigned to a local name,
-    insert a follow-up `<name>.sculpt_tool = <value>` to preserve intent.
+
+def _rewrite_brush_call(call: ast.Call) -> ast.expr | None:
+    """Normalise a `bpy.data.brushes.new(...)` call. Returns the value to
+    assign as the call's `tool=` kwarg (so the caller can append a follow-up
+    `<target>.sculpt_tool = X`), or None if no follow-up is needed.
+
+    Two cases:
+    1. `tool=<MODE_STRING>` and no `mode=` → rename `tool` to `mode`.
+    2. `tool=<X>` and `mode=` already present → drop `tool=` and return X
+       so the caller can emit `target.sculpt_tool = X`.
+    Also: if `mode=` is missing entirely after step 1, inject mode='SCULPT'.
+    """
+    tool_kw = next((k for k in call.keywords if k.arg == "tool"), None)
+    has_mode = any(k.arg == "mode" for k in call.keywords)
+    follow_value: ast.expr | None = None
+
+    if tool_kw is not None:
+        is_mode_string = (
+            isinstance(tool_kw.value, ast.Constant)
+            and isinstance(tool_kw.value.value, str)
+            and tool_kw.value.value in _BRUSH_MODES
+        )
+        if is_mode_string and not has_mode:
+            tool_kw.arg = "mode"
+            has_mode = True
+        else:
+            call.keywords = [k for k in call.keywords if k.arg != "tool"]
+            follow_value = tool_kw.value
+
+    if not has_mode:
+        call.keywords.append(
+            ast.keyword(arg="mode", value=ast.Constant(value="SCULPT"))
+        )
+    return follow_value
+
+
+class _BrushApiFixer(ast.NodeTransformer):
+    """Repair `bpy.data.brushes.new(...)` calls for the Blender 4.x API.
+
+    `BlendDataBrushes.new()` in 4.x only accepts (name, mode); the `tool`
+    kwarg was removed. Models still emit the legacy form, sometimes even
+    using `tool='SCULPT'` in place of `mode='SCULPT'`. We rewrite both.
     """
 
     def visit_Assign(self, node: ast.Assign):
-        # Inspect the brush call BEFORE recursing — generic_visit would
-        # otherwise hit visit_Call and strip the `tool=` kwarg first.
         if (
             isinstance(node.value, ast.Call)
             and _is_brushes_new_call(node.value)
             and len(node.targets) == 1
             and isinstance(node.targets[0], ast.Name)
         ):
-            tool_kw = next((k for k in node.value.keywords if k.arg == "tool"), None)
-            if tool_kw is not None:
-                node.value.keywords = [k for k in node.value.keywords if k.arg != "tool"]
+            follow_value = _rewrite_brush_call(node.value)
+            if follow_value is not None:
                 follow = ast.Assign(
                     targets=[
                         ast.Attribute(
@@ -49,16 +88,17 @@ class _BrushApiFixer(ast.NodeTransformer):
                             ctx=ast.Store(),
                         )
                     ],
-                    value=tool_kw.value,
+                    value=follow_value,
                 )
                 return [node, follow]
+            return node
         self.generic_visit(node)
         return node
 
     def visit_Call(self, node: ast.Call):
         self.generic_visit(node)
         if _is_brushes_new_call(node):
-            node.keywords = [k for k in node.keywords if k.arg != "tool"]
+            _rewrite_brush_call(node)
         return node
 
 

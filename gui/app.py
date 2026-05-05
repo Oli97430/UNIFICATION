@@ -427,33 +427,6 @@ class OllamaToBlenderApp(ctk.CTk):
             justify="center",
         ).pack()
 
-        suggestions = [
-            t("suggest.sculpt_suzanne"),
-            t("suggest.sculpt_dyntopo"),
-            t("suggest.sculpt_voxel_remesh"),
-            t("suggest.sculpt_mirror_multires"),
-            t("suggest.sculpt_shape_keys"),
-            t("suggest.sculpt_decimate"),
-        ]
-        sug_frame = ctk.CTkFrame(self.empty_state, fg_color="transparent")
-        sug_frame.pack(pady=24)
-        for i, s in enumerate(suggestions):
-            r, c = divmod(i, 2)
-            chip = ctk.CTkButton(
-                sug_frame,
-                text=s,
-                width=340,
-                height=52,
-                fg_color=T.BG_PANEL,
-                hover_color=T.BG_RAISED,
-                text_color=T.INK_MUTED,
-                border_width=1,
-                border_color=T.EDGE,
-                font=(T.FONT_FAMILY, 13),
-                anchor="w",
-                command=lambda t=s: self._insert_prompt(t),
-            )
-            chip.grid(row=r, column=c, padx=6, pady=4)
 
     def _insert_prompt(self, text: str) -> None:
         self._clear_placeholder()
