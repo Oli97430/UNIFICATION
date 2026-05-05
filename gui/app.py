@@ -56,7 +56,7 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 class OllamaToBlenderApp(ctk.CTk):
     APP_TITLE = "OllamaToBlender"
-    APP_VERSION = "1.1.2"
+    APP_VERSION = "1.2.0"
 
     def __init__(self) -> None:
         super().__init__()
@@ -95,6 +95,7 @@ class OllamaToBlenderApp(ctk.CTk):
         self._log_lines: list[str] = []
         self._attached_image_b64: str | None = None
         self._attached_image_thumb: ctk.CTkImage | None = None
+        self._scroll_scheduled: bool = False
 
         self._build_layout()
         self.show_view("chat")
@@ -480,6 +481,7 @@ class OllamaToBlenderApp(ctk.CTk):
             on_run=self._on_run_turn,
             on_retry=self._on_retry_turn,
             on_stop=self._on_stop_turn,
+            on_delete=self._on_delete_turn,
             image_b64=image_b64,
         )
         turn._fix_attempts = fix_attempt  # type: ignore[attr-defined]
@@ -634,17 +636,49 @@ class OllamaToBlenderApp(ctk.CTk):
                 break
         self._submit_prompt(prompt)
 
+    def _on_delete_turn(self, turn: ChatTurn) -> None:
+        """Remove a single turn from the conversation."""
+        if turn in self._chat_turns:
+            idx = self._chat_turns.index(turn)
+            # Remove matching history entries (user + assistant)
+            prompt = turn.prompt
+            found_user = False
+            for i in range(len(self._convo_history) - 1, -1, -1):
+                entry = self._convo_history[i]
+                if not found_user and entry["role"] == "assistant":
+                    self._convo_history.pop(i)
+                    continue
+                if entry["role"] == "user" and entry["content"] == prompt:
+                    self._convo_history.pop(i)
+                    found_user = True
+                    break
+                if found_user:
+                    break
+            self._chat_turns.pop(idx)
+            turn.destroy()
+            self._save_history_async()
+            if not self._chat_turns:
+                self._build_empty_state()
+
     def _on_stop_turn(self, _turn: ChatTurn) -> None:
         if self._stop_event is not None:
             self._stop_event.set()
             self._log("user stopped streaming")
 
     def _clear_chat(self) -> None:
+        # Guard: confirm if the conversation has substance
+        if len(self._chat_turns) > 2:
+            dialog = ctk.CTkInputDialog(
+                text=t("dialog.clear_confirm"),
+                title=t("dialog.clear_title"),
+            )
+            if not dialog.get_input():
+                return
         if self._stop_event:
             self._stop_event.set()
-        for t in self._chat_turns:
+        for turn in self._chat_turns:
             try:
-                t.destroy()
+                turn.destroy()
             except Exception:
                 pass
         self._chat_turns.clear()
@@ -659,9 +693,16 @@ class OllamaToBlenderApp(ctk.CTk):
             pass
 
     def _scroll_to_bottom_smooth(self) -> None:
-        # only auto-scroll if the user hasn't scrolled up significantly
+        # Throttled: ignore calls within 100ms of the last scheduled scroll
+        if self._scroll_scheduled:
+            return
+        self._scroll_scheduled = True
+        self.after(100, self._do_scroll_to_bottom)
+
+    def _do_scroll_to_bottom(self) -> None:
+        self._scroll_scheduled = False
         try:
-            top, bottom = self.history_frame._parent_canvas.yview()
+            _top, bottom = self.history_frame._parent_canvas.yview()
             if bottom > 0.92:
                 self.history_frame._parent_canvas.yview_moveto(1.0)
         except Exception:
@@ -1023,7 +1064,7 @@ class OllamaToBlenderApp(ctk.CTk):
         head1 = ctk.CTkFrame(installed_card, fg_color="transparent")
         head1.pack(fill="x", padx=14, pady=(12, 4))
         ctk.CTkLabel(head1, text=t("models.installed.title"), text_color=T.INK, font=(T.FONT_FAMILY, 15, "bold")).pack(side="left")
-        IconButton(head1, text=t("models.btn.refresh") if "models.btn.refresh" else t("setup.btn.refresh"), command=self._refresh_models_list, width=84).pack(side="right")
+        IconButton(head1, text=t("models.btn.refresh"), command=self._refresh_models_list, width=84).pack(side="right")
 
         self.installed_frame = ctk.CTkScrollableFrame(installed_card, fg_color="transparent")
         self.installed_frame.pack(fill="both", expand=True, padx=8, pady=(4, 12))
@@ -1084,9 +1125,18 @@ class OllamaToBlenderApp(ctk.CTk):
             command=self._on_pull_model,
         ).pack(fill="x", padx=14, pady=(10, 6))
 
-        self.pull_progress = ctk.CTkProgressBar(pull_card, progress_color=T.ACCENT, fg_color=T.BG_INPUT)
+        pull_bottom = ctk.CTkFrame(pull_card, fg_color="transparent")
+        pull_bottom.pack(fill="x", padx=14, pady=(2, 4))
+        self.pull_progress = ctk.CTkProgressBar(pull_bottom, progress_color=T.ACCENT, fg_color=T.BG_INPUT)
         self.pull_progress.set(0)
-        self.pull_progress.pack(fill="x", padx=14, pady=(2, 4))
+        self.pull_progress.pack(side="left", fill="x", expand=True)
+        self.pull_cancel_btn = IconButton(
+            pull_bottom, text=t("turn.btn.stop"), command=self._cancel_pull,
+            tooltip=t("models.pull.cancel_tooltip"), width=72, height=28,
+        )
+        self.pull_cancel_btn.pack(side="right", padx=(6, 0))
+        self.pull_cancel_btn.configure(state="disabled")
+        self._pull_stop = threading.Event()
         self.pull_status = ctk.CTkLabel(pull_card, text="", text_color=T.INK_MUTED, font=(T.FONT_FAMILY, 12))
         self.pull_status.pack(fill="x", padx=14, pady=(0, 12))
 
@@ -1215,12 +1265,22 @@ class OllamaToBlenderApp(ctk.CTk):
         if not name:
             return
         self.pull_progress.set(0)
+        self._pull_stop.clear()
+        self.pull_cancel_btn.configure(state="normal")
         self.pull_status.configure(text=t("models.pull.starting"))
         threading.Thread(target=self._pull_worker, args=(name,), daemon=True).start()
+
+    def _cancel_pull(self) -> None:
+        self._pull_stop.set()
+        self.pull_cancel_btn.configure(state="disabled")
 
     def _pull_worker(self, name: str) -> None:
         try:
             for evt in self.ollama.pull_stream(name):
+                if self._pull_stop.is_set():
+                    self.after(0, lambda: self.pull_status.configure(text=t("models.pull.cancelled")))
+                    self.after(0, lambda: self.pull_cancel_btn.configure(state="disabled"))
+                    return
                 status = evt.get("status", "")
                 total = evt.get("total")
                 completed = evt.get("completed")
@@ -1235,10 +1295,12 @@ class OllamaToBlenderApp(ctk.CTk):
         except Exception as exc:
             self.after(0, lambda: self.pull_status.configure(text=t("models.pull.error", error=str(exc))))
             self.after(0, lambda: Toast(self, t("toast.pull_failed", error=str(exc)), kind="err"))
+            self.after(0, lambda: self.pull_cancel_btn.configure(state="disabled"))
             return
         self.after(0, self.pull_progress.set, 1.0)
         self.after(0, lambda: self.pull_status.configure(text=t("models.pull.done")))
         self.after(0, lambda: Toast(self, t("toast.pulled", name=name), kind="ok"))
+        self.after(0, lambda: self.pull_cancel_btn.configure(state="disabled"))
         self.after(0, self._refresh_models_list)
 
     # =========================================================== settings view
@@ -1418,7 +1480,7 @@ class OllamaToBlenderApp(ctk.CTk):
         self.settings.language = code
         applied = set_language(code)
         self._save_settings()
-        Toast(self, t("toast.settings_saved"), kind="ok")
+        Toast(self, t("toast.language_restart"), kind="warn", duration_ms=4000)
         self._log(f"language switched to {applied}")
 
     def _on_save_settings_clicked(self) -> None:
@@ -1436,6 +1498,13 @@ class OllamaToBlenderApp(ctk.CTk):
         except ValueError as exc:
             Toast(self, t("toast.invalid_value", error=str(exc)), kind="err")
             return
+        # Sync inline chat toggles into settings
+        if hasattr(self, "auto_run_var"):
+            self.settings.auto_execute = bool(self.auto_run_var.get())
+        if hasattr(self, "auto_fix_var"):
+            self.settings.auto_fix_on_error = bool(self.auto_fix_var.get())
+        if hasattr(self, "render_var"):
+            self.settings.auto_render_preview = bool(self.render_var.get())
         self.ollama = OllamaClient(self.settings.ollama_url)
         self.blender = BlenderClient(self.settings.blender_host, self.settings.blender_port)
         self._save_settings()
@@ -1574,8 +1643,9 @@ class OllamaToBlenderApp(ctk.CTk):
             (t("shortcut.focus"), "Ctrl+K"),
             (t("shortcut.settings"), "Ctrl+,"),
             (t("shortcut.chat"), "Ctrl+1"),
-            (t("shortcut.models"), "Ctrl+2"),
-            (t("shortcut.logs"), "Ctrl+3"),
+            (t("shortcut.setup"), "Ctrl+2"),
+            (t("shortcut.models"), "Ctrl+3"),
+            (t("shortcut.logs"), "Ctrl+4"),
         ]:
             r = ctk.CTkFrame(sc_card, fg_color="transparent")
             r.pack(fill="x", padx=18, pady=2)
@@ -1589,15 +1659,32 @@ class OllamaToBlenderApp(ctk.CTk):
         threading.Thread(target=self._refresh_status_async, daemon=True).start()
 
     def _refresh_status_async(self) -> None:
-        ollama_ok = self.ollama.is_alive()
-        blender_ok = self.blender.ping()
-        self.after(0, self._apply_status, ollama_ok, blender_ok)
+        # Run both checks in parallel to halve latency
+        results: dict[str, bool] = {}
+        def _check_ollama():
+            try:
+                results["ollama"] = self.ollama.is_alive()
+            except Exception:
+                results["ollama"] = False
+        def _check_blender():
+            try:
+                results["blender"] = self.blender.ping()
+            except Exception:
+                results["blender"] = False
+        t1 = threading.Thread(target=_check_ollama, daemon=True)
+        t2 = threading.Thread(target=_check_blender, daemon=True)
+        t1.start(); t2.start()
+        t1.join(timeout=5); t2.join(timeout=5)
+        self.after(0, self._apply_status, results.get("ollama", False), results.get("blender", False))
 
     def _refresh_blender_status(self) -> None:
-        threading.Thread(
-            target=lambda: self.after(0, self._apply_blender_only, self.blender.ping()),
-            daemon=True,
-        ).start()
+        def _ping():
+            try:
+                ok = self.blender.ping()
+            except Exception:
+                ok = False
+            self.after(0, self._apply_blender_only, ok)
+        threading.Thread(target=_ping, daemon=True).start()
 
     def _apply_status(self, ollama_ok: bool, blender_ok: bool) -> None:
         self.pill_ollama.set_state("ok" if ollama_ok else "err", t("pill.ollama") if ollama_ok else t("pill.ollama.offline"))
@@ -1655,7 +1742,7 @@ class OllamaToBlenderApp(ctk.CTk):
     def _save_history_async(self) -> None:
         if not self.settings.persist_history:
             return
-        snapshot = [t.to_dict() for t in self._chat_turns]
+        snapshot = [turn.to_dict() for turn in self._chat_turns]
         threading.Thread(target=lambda: save_history(snapshot), daemon=True).start()
 
     def _restore_history(self) -> None:
@@ -1675,6 +1762,7 @@ class OllamaToBlenderApp(ctk.CTk):
                 on_run=self._on_run_turn,
                 on_retry=self._on_retry_turn,
                 on_stop=self._on_stop_turn,
+                on_delete=self._on_delete_turn,
             )
             turn.pack(fill="x", pady=(2, 0))
             self._chat_turns.append(turn)

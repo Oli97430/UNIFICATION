@@ -36,12 +36,14 @@ class ChatTurn(ctk.CTkFrame):
         on_run: Callable[["ChatTurn"], None],
         on_retry: Callable[["ChatTurn"], None],
         on_stop: Callable[["ChatTurn"], None] | None = None,
+        on_delete: Callable[["ChatTurn"], None] | None = None,
         image_b64: str | None = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self.on_run = on_run
         self.on_retry = on_retry
         self.on_stop = on_stop
+        self.on_delete = on_delete
         self.prompt = prompt
         self.model_name = model_name
         self.image_b64 = image_b64
@@ -169,6 +171,12 @@ class ChatTurn(ctk.CTkFrame):
         self.save_btn.configure(state="disabled")
         self.save_btn.pack(side="left", padx=(8, 0))
 
+        self.delete_btn = IconButton(
+            self.actions, text=t("turn.btn.delete"), command=self._on_delete_clicked,
+            tooltip=t("turn.btn.delete.tooltip"), width=38, height=38,
+        )
+        self.delete_btn.pack(side="left", padx=(8, 0))
+
         self.stop_btn = IconButton(
             self.actions, text=t("turn.btn.stop"), command=self._on_stop_clicked,
             tooltip=t("turn.btn.stop.tooltip"), width=92, height=38,
@@ -290,6 +298,10 @@ class ChatTurn(ctk.CTkFrame):
     def _on_stop_clicked(self) -> None:
         if self.on_stop:
             self.on_stop(self)
+
+    def _on_delete_clicked(self) -> None:
+        if self.on_delete:
+            self.on_delete(self)
 
     def _save_code(self) -> None:
         code = self.code_view.get_code()

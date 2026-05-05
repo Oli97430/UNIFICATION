@@ -264,7 +264,9 @@ class CodeView(ctk.CTkFrame):
         self.text.insert("end", chunk)
         self.text.see("end")
         self._update_lines()
-        self._highlight()
+        # Skip highlighting during streaming — it's O(n) per call, causing
+        # O(n²) over a full stream. Highlighting is applied once in
+        # set_code() / finish_response() or on user edits via _schedule_highlight.
         if not self._editable:
             self.text.configure(state="disabled")
 

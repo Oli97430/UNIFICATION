@@ -148,11 +148,13 @@ class OllamaClient:
 
     def pull_stream(self, model: str) -> Generator[dict, None, None]:
         """Stream pull progress from /api/pull. Yields raw status dicts."""
+        # Use a generous timeout: connect within 30s, but allow reads to
+        # take as long as needed — large model downloads can take hours.
         with requests.post(
             f"{self.base_url}/api/pull",
             json={"name": model, "stream": True},
             stream=True,
-            timeout=self.timeout,
+            timeout=(30, None),
         ) as r:
             r.raise_for_status()
             for line in r.iter_lines(decode_unicode=True):
@@ -243,11 +245,15 @@ def trim_history(
 
 
 def extract_python_code(text: str) -> str:
-    """Pull the python block out of a model response. Falls back to the raw text."""
+    """Pull the python block out of a model response.
+
+    Returns the first ```python ... ``` block, or an empty string if no
+    fence is found — prose without a code fence is NOT executable Python.
+    """
     matches = CODE_FENCE_RE.findall(text)
     if matches:
         return matches[0].strip()
-    return text.strip()
+    return ""
 
 
 # Curated, code-strong models that fit on consumer GPUs. All resolve to Q4_K_M

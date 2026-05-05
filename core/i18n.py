@@ -88,6 +88,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "turn.btn.regenerate.tooltip": "Re-ask the model with the same prompt",
         "turn.btn.save_py": "Save .py",
         "turn.btn.save_py.tooltip": "Save the generated script to a .py file",
+        "turn.btn.delete": "🗑",
+        "turn.btn.delete.tooltip": "Remove this turn from the conversation",
         "turn.btn.stop": "■  Stop",
         "turn.btn.stop.tooltip": "Cancel the streaming response",
         "turn.result.ok": "✓  Executed in Blender",
@@ -237,6 +239,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "toast.image_error": "Could not read image: {error}",
         "toast.attach_pick_first": "Type or browse to a folder first",
         "toast.cant_open_explorer": "Could not open file explorer",
+        "toast.language_restart": "Language changed — restart the app to apply everywhere",
+
+        # --- dialogs
+        "dialog.clear_confirm": "Type OK to clear the conversation:",
+        "dialog.clear_title": "Clear conversation?",
+
+        # --- models
+        "models.btn.refresh": "Refresh",
+        "models.pull.cancelled": "Pull cancelled",
+        "models.pull.cancel_tooltip": "Abort model download",
 
         # --- empty state suggestion chips (sculpting-focused)
         "suggest.sculpt_suzanne": "Add Suzanne, give it a Multires modifier (3 subdivisions), then switch to Sculpt mode ready for the Grab brush",
@@ -307,6 +319,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "turn.btn.regenerate.tooltip": "Redemander au modèle avec le même prompt",
         "turn.btn.save_py": "Sauver .py",
         "turn.btn.save_py.tooltip": "Sauvegarder le script généré dans un fichier .py",
+        "turn.btn.delete": "🗑",
+        "turn.btn.delete.tooltip": "Supprimer ce turn de la conversation",
         "turn.btn.stop": "■  Stop",
         "turn.btn.stop.tooltip": "Annuler la génération en cours",
         "turn.result.ok": "✓  Exécuté dans Blender",
@@ -456,6 +470,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "toast.image_error": "Impossible de lire l'image : {error}",
         "toast.attach_pick_first": "Saisis ou parcours un dossier d'abord",
         "toast.cant_open_explorer": "Impossible d'ouvrir l'explorateur",
+        "toast.language_restart": "Langue modifiée — redémarre l'app pour appliquer partout",
+
+        # --- dialogs
+        "dialog.clear_confirm": "Tape OK pour vider la conversation :",
+        "dialog.clear_title": "Vider la conversation ?",
+
+        # --- models
+        "models.btn.refresh": "Rafraîchir",
+        "models.pull.cancelled": "Téléchargement annulé",
+        "models.pull.cancel_tooltip": "Annuler le téléchargement",
 
         # --- empty state suggestion chips (sculpting-focused, in French)
         "suggest.sculpt_suzanne": "Ajoute Suzanne, applique un modificateur Multires (3 subdivisions), puis bascule en mode Sculpt prêt pour le brush Grab",

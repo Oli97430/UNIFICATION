@@ -110,7 +110,11 @@ BLENDER API GUIDELINES
    ONLY clear if the user asks for a fresh scene; otherwise add to the existing one.
 6. Use `bpy.context.scene.frame_set(n)` and keyframe with `obj.keyframe_insert(...)` for animation.
 7. For rendering: set `scene.render.filepath`, `scene.render.image_settings.file_format`,
-   then `bpy.ops.render.render(write_still=True)`. Save absolute paths (//render.png is fine for project-relative).
+   then `bpy.ops.render.render(write_still=True)`. ALWAYS use an ABSOLUTE path for the
+   output file — relative paths like `"render.png"` or `"//render.png"` will fail when no
+   .blend file is saved yet. Use `tempfile` to build a safe path:
+       import tempfile, os
+       scene.render.filepath = os.path.join(tempfile.gettempdir(), "blender_render.png")
 8. Defensive coding: assume the scene state is unknown. Look up objects by name with
    `bpy.data.objects.get("Cube")` rather than assuming `bpy.context.active_object`.
 
@@ -356,4 +360,6 @@ REMEMBER:
 - Always pair `bmesh.new()` with `bm.to_mesh(mesh)` + `bm.free()`.
 - For sculpt brushes: `bpy.data.brushes.new(name, mode='SCULPT')` only — no `tool=` kwarg.
   Set the tool type AFTER: `brush.sculpt_tool = 'GRAB'`. Never pass `tool=` to `.new()`.
+- For rendering: ALWAYS use an absolute path (`os.path.join(tempfile.gettempdir(), "render.png")`).
+  Relative paths fail when no .blend is saved.
 """

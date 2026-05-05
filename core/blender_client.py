@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import socket
 import textwrap
 from dataclasses import dataclass
@@ -102,12 +103,21 @@ class _BrushApiFixer(ast.NodeTransformer):
         return node
 
 
+_BRUSH_TOOL_RE = re.compile(r"brushes\s*\.\s*new\s*\([^)]*\btool\s*=")
+
+
 def sanitize_code(code: str) -> str:
     """Best-effort rewrite of known-bad Blender 4+ API patterns.
 
     Currently fixes: `bpy.data.brushes.new(..., tool=X)` → drops the kwarg
     and (when assigned) appends `target.sculpt_tool = X`.
+
+    Only runs the AST transform when a problematic pattern is actually
+    detected via regex — this avoids `ast.unparse` stripping comments and
+    reformatting user-edited code when no fix is needed.
     """
+    if not _BRUSH_TOOL_RE.search(code):
+        return code
     try:
         tree = ast.parse(code)
     except SyntaxError:
@@ -230,6 +240,9 @@ def wrap_with_render(code: str) -> str:
     return _V3D_PREAMBLE + body + textwrap.indent(_RENDER_POSTAMBLE, "    ")
 
 
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50 MB safety cap
+
+
 class BlenderClient:
     """Sends Python code to the Blender addon and reads the JSON response."""
 
@@ -267,6 +280,8 @@ class BlenderClient:
                     if not chunk:
                         break
                     buf.extend(chunk)
+                    if len(buf) > MAX_RESPONSE_SIZE:
+                        raise OSError(f"Response exceeded {MAX_RESPONSE_SIZE // (1024*1024)} MB limit")
                     if b"\x00" in chunk:
                         break
             raw = bytes(buf).rstrip(b"\x00").decode("utf-8", errors="replace")
