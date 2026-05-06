@@ -992,6 +992,14 @@ class UnificationApp(ctk.CTk):
             ctk.CTkLabel(right, text=step_text, text_color=T.INK_MUTED,
                          font=(T.FONT_FAMILY, 13), justify="left",
                          ).pack(anchor="w", padx=18, pady=1)
+        # Optional warning note (FreeCAD, GIMP — macro must be run each session)
+        note_key = f"{steps_key}.note"
+        note_text = t(note_key)
+        if note_text != note_key:
+            ctk.CTkLabel(right, text=note_text, text_color=T.ACCENT,
+                         font=(T.FONT_FAMILY, 12, "bold"), justify="left",
+                         wraplength=350,
+                         ).pack(anchor="w", padx=18, pady=(8, 0))
         ctk.CTkLabel(right, text="").pack(pady=(0, 12))
 
         # Populate left panel

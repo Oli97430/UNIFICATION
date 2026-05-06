@@ -175,11 +175,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "setup.next_steps.freecad.2": "2.  Macro → Macros → select freecad_mcp_addon",
         "setup.next_steps.freecad.3": "3.  Click Execute",
         "setup.next_steps.freecad.4": "4.  The FreeCAD pill should turn green",
+        "setup.next_steps.freecad.note": "Note: the macro must be run each time FreeCAD starts. Installing alone is not enough.",
         # GIMP next steps
         "setup.next_steps.gimp.1": "1.  Restart GIMP",
         "setup.next_steps.gimp.2": "2.  Filters → Python-Fu → MCP Server Start",
         "setup.next_steps.gimp.3": "3.  (GIMP 3.0+: Filters → MCP Server Start)",
         "setup.next_steps.gimp.4": "4.  The GIMP pill should turn green",
+        "setup.next_steps.gimp.note": "Note: the server must be started manually each time GIMP starts.",
         # Inkscape info
         "setup.standalone.title": "Standalone servers",
         "setup.standalone.inkscape": (
@@ -461,11 +463,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "setup.next_steps.freecad.2": "2.  Macro → Macros → sélectionne freecad_mcp_addon",
         "setup.next_steps.freecad.3": "3.  Clique Exécuter",
         "setup.next_steps.freecad.4": "4.  La pastille FreeCAD doit passer au vert",
+        "setup.next_steps.freecad.note": "Note : la macro doit être lancée à chaque démarrage de FreeCAD. L'installation seule ne suffit pas.",
         # GIMP
         "setup.next_steps.gimp.1": "1.  Redémarre GIMP",
         "setup.next_steps.gimp.2": "2.  Filtres → Python-Fu → MCP Server Start",
         "setup.next_steps.gimp.3": "3.  (GIMP 3.0+ : Filtres → MCP Server Start)",
         "setup.next_steps.gimp.4": "4.  La pastille GIMP doit passer au vert",
+        "setup.next_steps.gimp.note": "Note : le serveur doit être démarré manuellement à chaque lancement de GIMP.",
         # Standalone
         "setup.standalone.title": "Serveurs standalone",
         "setup.standalone.inkscape": (
