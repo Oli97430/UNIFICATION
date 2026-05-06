@@ -831,9 +831,9 @@ class UnificationApp(ctk.CTk):
             font=(T.FONT_FAMILY, 13, "bold"),
             selected_color=T.ACCENT,
             selected_hover_color=T.ACCENT_HOVER,
-            unselected_color=T.BG_PANEL,
-            unselected_hover_color=T.BG_RAISED,
-            text_color="#1a1a1a",
+            unselected_color=T.BG_RAISED,
+            unselected_hover_color=T.EDGE,
+            text_color=T.INK,
             text_color_disabled=T.INK_DIM,
         )
         seg.grid(row=2, column=0, sticky="ew", padx=4, pady=(0, 10))

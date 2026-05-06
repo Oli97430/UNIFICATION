@@ -240,41 +240,74 @@ class AppAddonDir:
 
 # ---- FreeCAD discovery
 
-def _freecad_macro_dirs() -> list[Path]:
-    """Possible FreeCAD Macro directories on this OS."""
+_FREECAD_VER_RE = re.compile(r"^v?\d+[\.\-]\d+")
+
+
+def _freecad_config_roots() -> list[Path]:
+    """Possible FreeCAD config root directories on this OS."""
     home = Path.home()
     system = platform.system()
-    candidates: list[Path] = []
+    roots: list[Path] = []
     if system == "Windows":
-        candidates.append(home / "AppData" / "Roaming" / "FreeCAD" / "Macro")
+        roots.append(home / "AppData" / "Roaming" / "FreeCAD")
     elif system == "Darwin":
-        candidates.append(home / "Library" / "Application Support" / "FreeCAD" / "Macro")
+        roots.append(home / "Library" / "Application Support" / "FreeCAD")
+        roots.append(home / "Library" / "Preferences" / "FreeCAD")
     else:
-        candidates.append(home / ".local" / "share" / "FreeCAD" / "Macro")
-        candidates.append(home / ".FreeCAD" / "Macro")  # legacy
+        roots.append(home / ".local" / "share" / "FreeCAD")
+        roots.append(home / ".config" / "FreeCAD")
+        roots.append(home / ".FreeCAD")  # legacy
+    return [r for r in roots if r.exists()]
+
+
+def _freecad_macro_dirs() -> list[Path]:
+    """Find all FreeCAD Macro directories.
+
+    FreeCAD layout varies by version:
+      - Legacy (< 1.0):  <root>/Macro/
+      - Modern (>= 1.0): <root>/v1-1/Macro/  (versioned subdirectory)
+    We scan for both patterns.
+    """
+    candidates: list[Path] = []
+    for root in _freecad_config_roots():
+        # Legacy: direct Macro/ under root
+        legacy = root / "Macro"
+        if legacy.is_dir():
+            candidates.append(legacy)
+        # Modern: versioned subdirectories (v1-1, v1-2, 0.21, etc.)
+        for child in sorted(root.iterdir(), reverse=True):
+            if not child.is_dir():
+                continue
+            if not _FREECAD_VER_RE.match(child.name):
+                continue
+            macro = child / "Macro"
+            if macro.is_dir():
+                candidates.append(macro)
+            elif child.is_dir():
+                # Version dir exists but Macro/ not yet created — still a valid target
+                candidates.append(macro)
     return candidates
 
 
 def find_freecad_addon_dirs() -> list[AppAddonDir]:
     """Detect FreeCAD Macro directories where we can install the addon."""
     found: list[AppAddonDir] = []
+    seen: set[Path] = set()
     for macro_dir in _freecad_macro_dirs():
-        if not macro_dir.exists():
-            # Check if parent exists (FreeCAD is installed but Macro dir not yet created)
-            if macro_dir.parent.exists():
-                found.append(AppAddonDir(
-                    app="freecad",
-                    label=f"FreeCAD  —  {macro_dir}",
-                    path=macro_dir,
-                    addon_filename=FREECAD_ADDON_FILE,
-                    bundled_path=BUNDLED_FREECAD_PATH,
-                    installed_version="",
-                ))
+        if macro_dir in seen:
             continue
-        installed = read_installed_version(macro_dir / FREECAD_ADDON_FILE)
+        seen.add(macro_dir)
+        # Derive version label from path
+        parent_name = macro_dir.parent.name
+        if _FREECAD_VER_RE.match(parent_name):
+            ver = parent_name.replace("-", ".")
+            label = f"FreeCAD {ver}  —  {macro_dir}"
+        else:
+            label = f"FreeCAD  —  {macro_dir}"
+        installed = read_installed_version(macro_dir / FREECAD_ADDON_FILE) if macro_dir.exists() else ""
         found.append(AppAddonDir(
             app="freecad",
-            label=f"FreeCAD  —  {macro_dir}",
+            label=label,
             path=macro_dir,
             addon_filename=FREECAD_ADDON_FILE,
             bundled_path=BUNDLED_FREECAD_PATH,
