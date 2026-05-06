@@ -378,15 +378,15 @@ class ChatTurn(ctk.CTkFrame):
         self.run_btn.configure(state="disabled", text=t("turn.btn.run.running"))
         self.result_frame.pack_forget()
 
-    def set_blender_result(self, status: str, payload: dict) -> None:
+    def set_blender_result(self, status: str, payload: dict, app_label: str = "Blender") -> None:
         self.blender_status = status
         self.blender_payload = payload
         self.run_btn.configure(state="normal", text=t("turn.btn.run"))
         color = {"ok": T.OK, "error": T.ERR, "transport_error": T.ERR}.get(status, T.WARN)
         label = {
-            "ok": t("turn.result.ok"),
-            "error": t("turn.result.error"),
-            "transport_error": t("turn.result.transport_error"),
+            "ok": t("turn.result.ok").format(app=app_label),
+            "error": t("turn.result.error").format(app=app_label),
+            "transport_error": t("turn.result.transport_error").format(app=app_label),
         }.get(status, status)
         self.result_status.configure(text=label, text_color=color)
 

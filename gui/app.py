@@ -27,6 +27,7 @@ from core import (
     Settings,
     StreamStats,
     SYSTEM_PROMPT,
+    is_query_intent,
     UpdateInfo,
     available_languages,
     check_for_update,
@@ -104,6 +105,7 @@ class UnificationApp(ctk.CTk):
         self._attached_image_b64: str | None = None
         self._attached_image_thumb: ctk.CTkImage | None = None
         self._scroll_scheduled: bool = False
+        self._target_app: str = "blender"  # current execution target: blender|freecad|gimp
         self._blender_queue: queue.Queue[tuple[ChatTurn, str]] = queue.Queue()
         threading.Thread(target=self._blender_queue_worker, daemon=True).start()
 
@@ -540,13 +542,20 @@ class UnificationApp(ctk.CTk):
         user_msg: str,
     ) -> None:
         full: list[str] = []
-        # Pick the appropriate system prompt (creator vs query)
-        sys_prompt = pick_system_prompt(user_msg) if self.settings.auto_route_prompt else SYSTEM_PROMPT
-        prompt_mode = "query" if (self.settings.auto_route_prompt and sys_prompt != SYSTEM_PROMPT) else "creator"
+        # Detect target creative app based on user message + online status
+        self._target_app = self._detect_target_app(user_msg)
+        target_label = self._target_label(self._target_app)
+        # Update run button text to reflect target app
+        self.after(0, lambda: turn.run_btn.configure(
+            text=f"▶  {t('turn.btn.run.prefix')} {target_label}"))
+
+        # Pick the appropriate system prompt (creator vs query, per app)
+        sys_prompt = pick_system_prompt(user_msg, self._target_app) if self.settings.auto_route_prompt else pick_system_prompt(user_msg, self._target_app)
+        prompt_mode = "query" if (self.settings.auto_route_prompt and is_query_intent(user_msg)) else "creator"
         self.after(0, lambda m=prompt_mode: turn.set_prompt_mode(m))
 
-        # Inject scene context so the model knows what exists
-        if self.settings.inject_scene_context:
+        # Inject scene context (Blender only — other apps don't have bpy)
+        if self.settings.inject_scene_context and self._target_app == "blender":
             try:
                 scene_result = self.blender.execute(
                     "result = [o.name + ' (' + o.type + ')' for o in __import__('bpy').data.objects]",
@@ -628,11 +637,14 @@ class UnificationApp(ctk.CTk):
         self._blender_queue.put((turn, code))
 
     def _blender_queue_worker(self) -> None:
-        """Serialize Blender executions so concurrent Run clicks don't race."""
+        """Serialize creative-app executions so concurrent Run clicks don't race."""
         while True:
             turn, code = self._blender_queue.get()
             try:
-                self._exec_in_blender(turn, code)
+                if self._target_app in ("freecad", "gimp", "inkscape", "photoshop"):
+                    self._exec_in_app_generic(turn, code, self._target_app)
+                else:
+                    self._exec_in_blender(turn, code)
             except Exception:
                 pass
             self._blender_queue.task_done()
@@ -647,7 +659,7 @@ class UnificationApp(ctk.CTk):
         if errors:
             msg = "Syntax check failed:\n" + "\n".join(i.format() for i in errors)
             payload = {"result": None, "stdout": "", "message": msg}
-            self.after(0, turn.set_blender_result, "error", payload)
+            self.after(0, turn.set_blender_result, "error", payload, "Blender")
             self.after(0, lambda: self._log(f"lint failure: {msg}"))
             self.after(0, lambda: self._maybe_auto_fix(turn, msg))
             return
@@ -657,7 +669,7 @@ class UnificationApp(ctk.CTk):
             with_render=bool(self.render_var.get()) if hasattr(self, "render_var") else False,
         )
         payload = {"result": result.result, "stdout": result.stdout, "message": result.message}
-        self.after(0, turn.set_blender_result, result.status, payload)
+        self.after(0, turn.set_blender_result, result.status, payload, "Blender")
         self.after(0, self._refresh_blender_status)
         self.after(0, lambda: self._log(f"blender: {result.status}"))
         self.after(0, self._save_history_async)
@@ -2024,6 +2036,103 @@ class UnificationApp(ctk.CTk):
     # Legacy alias kept for _refresh_blender_status callback
     def _apply_blender_only(self, ok: bool) -> None:
         self.pill_blender.set_state("ok" if ok else "warn", t("pill.blender") if ok else t("pill.blender.offline"))
+
+    # ---- target-app detection & generic TCP execution ----
+
+    def _detect_target_app(self, user_msg: str = "") -> str:
+        """Determine which creative app to target based on online status + keywords.
+
+        Priority:
+        1. Explicit keyword in user message (freecad, gimp, inkscape, blender)
+        2. First online creative app (Blender checked first)
+        3. Default to blender
+        """
+        lower = user_msg.lower()
+        # Explicit keyword match
+        if "freecad" in lower or "free cad" in lower:
+            return "freecad"
+        if "gimp" in lower:
+            return "gimp"
+        if "blender" in lower:
+            return "blender"
+        # Check which apps are online (pill state)
+        if self.pill_blender._state == "ok":
+            return "blender"
+        for app_key in ("freecad", "gimp"):
+            pill = self._app_pills.get(app_key)
+            if pill and pill._state == "ok":
+                return app_key
+        return "blender"  # fallback
+
+    def _target_port(self, app: str) -> int:
+        """Return the TCP port for the given app key."""
+        if app == "blender":
+            return self.settings.blender_port
+        info = CREATIVE_APPS.get(app)
+        return info["port"] if info else 9876
+
+    def _target_label(self, app: str) -> str:
+        """Human-readable label for the target app."""
+        labels = {"blender": "Blender", "freecad": "FreeCAD", "gimp": "GIMP",
+                  "inkscape": "Inkscape", "photoshop": "Photoshop"}
+        return labels.get(app, app.capitalize())
+
+    def _exec_in_app_generic(self, turn: ChatTurn, code: str, app: str) -> None:
+        """Execute code in a non-Blender creative app via raw TCP."""
+        import json as _json
+        import socket as _socket
+
+        app_label = self._target_label(app)
+        port = self._target_port(app)
+        host = self.settings.blender_host  # same host for all apps
+        payload = _json.dumps({"type": "execute", "code": code})
+
+        backoff = 1.0
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                with _socket.create_connection((host, port), timeout=120.0) as sock:
+                    sock.settimeout(120.0)
+                    sock.sendall(payload.encode("utf-8") + b"\x00")
+                    buf = bytearray()
+                    while True:
+                        chunk = sock.recv(8192)
+                        if not chunk:
+                            break
+                        buf.extend(chunk)
+                        if b"\x00" in chunk:
+                            break
+                raw = bytes(buf).rstrip(b"\x00").decode("utf-8", errors="replace")
+                data = _json.loads(raw) if raw else {}
+                result_payload = {
+                    "result": data.get("result"),
+                    "stdout": data.get("stdout", ""),
+                    "message": data.get("message", ""),
+                }
+                status = data.get("status", "error")
+                self.after(0, turn.set_blender_result, status, result_payload, app_label)
+                self.after(0, self._refresh_status)
+                self.after(0, lambda: self._log(f"{app}: {status}"))
+                self.after(0, self._save_history_async)
+                if status in ("error",) and data.get("message"):
+                    self.after(0, lambda: self._maybe_auto_fix(turn, data.get("message", "")))
+                return
+            except ConnectionRefusedError as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 15.0)
+                    continue
+            except Exception as exc:
+                result_payload = {"result": None, "stdout": "", "message": f"{type(exc).__name__}: {exc}"}
+                self.after(0, turn.set_blender_result, "transport_error", result_payload, app_label)
+                self.after(0, lambda: self._log(f"{app}: transport_error"))
+                return
+
+        result_payload = {"result": None, "stdout": "",
+                          "message": f"ConnectionRefusedError after 3 attempts: {last_exc}"}
+        self.after(0, turn.set_blender_result, "transport_error", result_payload, app_label)
+        self.after(0, lambda: self._log(f"{app}: connection refused"))
 
     def _poll_status_loop(self) -> None:
         self._refresh_status()

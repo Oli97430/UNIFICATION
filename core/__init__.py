@@ -35,7 +35,15 @@ from .ollama_client import (
     trim_history,
 )
 from .settings import HISTORY_PATH, LOG_PATH, Settings, load_history, save_history
-from .system_prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_QUERY, is_query_intent, pick_system_prompt
+from .system_prompt import (
+    FREECAD_PROMPT,
+    FREECAD_PROMPT_QUERY,
+    GIMP_PROMPT,
+    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_QUERY,
+    is_query_intent,
+    pick_system_prompt,
+)
 from .tcp_ping import CREATIVE_APPS, ping_tcp_addon
 from .updater import UpdateInfo, check_for_update
 
