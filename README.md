@@ -150,7 +150,8 @@ python main.py
 
 | Model | VRAM | Notes |
 |---|---|---|
-| `qwen2.5-coder:7b` | ~5 GB | **Default** — best quality/size for `bpy` code |
+| `qwen2.5:32b` | ~20 GB | **Default** — best overall quality for `bpy` code |
+| `qwen2.5-coder:7b` | ~5 GB | Best compact model for code |
 | `qwen2.5-coder:14b` | ~9 GB | Sharper on complex multi-step tasks |
 | `qwen2.5-coder:3b` | ~2 GB | Lightweight GPU or CPU-only |
 | `deepseek-coder-v2:16b` | ~9 GB | Strong alternative |

@@ -270,7 +270,8 @@ def extract_python_code(text: str) -> str:
 # Curated, code-strong models that fit on consumer GPUs. All resolve to Q4_K_M
 # by default in Ollama (the quality / size sweet spot).
 RECOMMENDED_MODELS: list[tuple[str, str]] = [
-    ("qwen2.5-coder:7b", "Code, ~4.7 GB, Q4_K_M — best default"),
+    ("qwen2.5:32b", "General+Code, ~20 GB, Q4_K_M — best quality"),
+    ("qwen2.5-coder:7b", "Code, ~4.7 GB, Q4_K_M — best compact"),
     ("qwen2.5-coder:14b", "Code, ~9 GB, Q4_K_M — better reasoning"),
     ("qwen2.5-coder:3b", "Code, ~1.9 GB, Q4_K_M — light VRAM"),
     ("qwen2.5-vl:32b", "Vision+Code, ~20 GB, Q4_K_M — best for 24 GB GPUs"),

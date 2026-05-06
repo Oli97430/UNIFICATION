@@ -15,7 +15,7 @@ LOG_PATH = CONFIG_DIR / "events.log"
 @dataclass
 class Settings:
     ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5-coder:7b"
+    ollama_model: str = "qwen2.5:32b"
     blender_host: str = "127.0.0.1"
     blender_port: int = 9876
     appearance_mode: str = "dark"  # "dark" | "light" | "system"
