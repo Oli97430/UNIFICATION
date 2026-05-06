@@ -16,13 +16,13 @@ if not exist ".venv" (
 if exist "build" rmdir /s /q build
 if exist "dist" rmdir /s /q dist
 
-pyinstaller --noconfirm OllamaToBlender.spec || goto :err
+pyinstaller --noconfirm Unification.spec || goto :err
 
 echo.
-echo [OllamaToBlender] Built dist\OllamaToBlender.exe
+echo [UNIFICATION] Built dist\Unification.exe
 exit /b 0
 
 :err
 echo.
-echo [OllamaToBlender] Build failed.
+echo [UNIFICATION] Build failed.
 exit /b 1

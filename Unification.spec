@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for OllamaToBlender.
+"""PyInstaller spec for UNIFICATION.
 
 Build:
-    pyinstaller --noconfirm OllamaToBlender.spec
+    pyinstaller --noconfirm Unification.spec
 
 Output:
-    dist/OllamaToBlender.exe   (Windows, single-file, windowed)
-    dist/OllamaToBlender       (Linux/macOS)
+    dist/Unification.exe   (Windows, single-file, windowed)
+    dist/Unification       (Linux/macOS)
 """
 import sys
 from pathlib import Path
@@ -23,6 +23,11 @@ datas = [
     (str(HERE / "assets" / "logo_64.png"), "assets"),
     (str(HERE / "assets" / "logo_128.png"), "assets"),
     (str(HERE / "assets" / "blender_mcp_addon.py"), "assets"),
+    (str(HERE / "assets" / "freecad_mcp_addon.py"), "assets"),
+    (str(HERE / "assets" / "gimp_mcp_addon.py"), "assets"),
+    (str(HERE / "assets" / "inkscape_mcp_server.py"), "assets"),
+    (str(HERE / "assets" / "photoshop_mcp_server.py"), "assets"),
+    (str(HERE / "mcp_server.py"), "."),
 ]
 # customtkinter ships a JSON theme tree it loads at runtime
 datas += collect_data_files("customtkinter")
@@ -54,7 +59,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="OllamaToBlender",
+    name="Unification",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

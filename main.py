@@ -1,4 +1,4 @@
-"""OllamaToBlender — entry point.
+"""UNIFICATION — entry point.
 
 Usage:
     python main.py

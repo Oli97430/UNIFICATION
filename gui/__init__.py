@@ -1,4 +1,4 @@
-"""OllamaToBlender GUI package."""
-from .app import OllamaToBlenderApp
+"""UNIFICATION GUI package."""
+from .app import UnificationApp
 
-__all__ = ["OllamaToBlenderApp"]
+__all__ = ["UnificationApp"]

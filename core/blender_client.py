@@ -263,7 +263,7 @@ def wrap_with_view3d_override(code: str) -> str:
 # Postamble that renders the active viewport to a PNG and stashes it into
 # `result["_otb_render"]` as a base64 string. Used opt-in.
 _RENDER_POSTAMBLE = """
-# --- OllamaToBlender: viewport preview render -------------------------------
+# --- UNIFICATION: viewport preview render -----------------------------------
 try:
     import base64 as _otb_b64
     import os as _otb_os

@@ -366,7 +366,7 @@ class ChatTurn(ctk.CTkFrame):
             title="Save Python script",
             defaultextension=".py",
             filetypes=[("Python files", "*.py"), ("All files", "*.*")],
-            initialfile="ollamatoblender.py",
+            initialfile="unification_script.py",
         )
         if not path:
             return

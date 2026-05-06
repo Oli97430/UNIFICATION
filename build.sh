@@ -12,7 +12,7 @@ pip install -r requirements.txt
 pip show pyinstaller >/dev/null 2>&1 || pip install "pyinstaller>=6.0"
 
 rm -rf build dist
-pyinstaller --noconfirm OllamaToBlender.spec
+pyinstaller --noconfirm Unification.spec
 
 echo
-echo "[OllamaToBlender] Built dist/OllamaToBlender"
+echo "[UNIFICATION] Built dist/Unification"

@@ -1,4 +1,4 @@
-"""Main OllamaToBlender window — sidebar + content router."""
+"""Main UNIFICATION window — sidebar + content router."""
 from __future__ import annotations
 
 import base64
@@ -13,8 +13,6 @@ from pathlib import Path
 from tkinter import filedialog
 from typing import Any
 
-from PIL import Image as PILImage
-
 import customtkinter as ctk
 from PIL import Image
 
@@ -22,6 +20,7 @@ from core import (
     ADDON_REMOTE_URL,
     BlenderAddonDir,
     BlenderClient,
+    CREATIVE_APPS,
     LANGUAGE_LABELS,
     OllamaClient,
     Settings,
@@ -38,6 +37,7 @@ from core import (
     model_supports_vision,
     open_addon_dir,
     pick_system_prompt,
+    ping_tcp_addon,
     read_bundled_version,
     save_history,
     set_language,
@@ -56,9 +56,9 @@ from .widgets import IconButton, SidebarButton, StatusPill, Toast, attach_toolti
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
-class OllamaToBlenderApp(ctk.CTk):
-    APP_TITLE = "OllamaToBlender"
-    APP_VERSION = "1.3.0"
+class UnificationApp(ctk.CTk):
+    APP_TITLE = "UNIFICATION"
+    APP_VERSION = "2.0.0"
 
     def __init__(self) -> None:
         super().__init__()
@@ -197,9 +197,18 @@ class OllamaToBlenderApp(ctk.CTk):
         attach_tooltip(self.pill_ollama, t("pill.ollama.tooltip"))
         self.pill_ollama.bind("<Button-1>", lambda _e: self._refresh_status())
         self.pill_blender = StatusPill(pills, "Blender")
-        self.pill_blender.pack(side="left")
+        self.pill_blender.pack(side="left", padx=(0, 6))
         attach_tooltip(self.pill_blender, t("pill.blender.tooltip"))
         self.pill_blender.bind("<Button-1>", lambda _e: self._refresh_status())
+
+        # Creative-app pills (FreeCAD, GIMP, Inkscape, Photoshop)
+        self._app_pills: dict[str, StatusPill] = {}
+        for app_key, app_info in CREATIVE_APPS.items():
+            pill = StatusPill(pills, app_info["name"])
+            pill.pack(side="left", padx=(0, 6))
+            attach_tooltip(pill, t(f"pill.{app_key}.tooltip"))
+            pill.bind("<Button-1>", lambda _e: self._refresh_status())
+            self._app_pills[app_key] = pill
 
     def _build_sidebar(self) -> None:
         side = ctk.CTkFrame(self, fg_color=T.BG_PANEL, width=260, corner_radius=T.R_LG)
@@ -426,7 +435,7 @@ class OllamaToBlenderApp(ctk.CTk):
 
         ctk.CTkLabel(
             self.empty_state,
-            text="OllamaToBlender",
+            text="UNIFICATION",
             text_color=T.INK,
             font=(T.FONT_FAMILY, 26, "bold"),
         ).pack(pady=(14, 4))
@@ -775,7 +784,7 @@ class OllamaToBlenderApp(ctk.CTk):
         path = filedialog.asksaveasfilename(
             title="Export conversation",
             defaultextension=".json",
-            initialfile=f"ollamatoblender_{datetime.now():%Y%m%d_%H%M%S}.json",
+            initialfile=f"unification_{datetime.now():%Y%m%d_%H%M%S}.json",
             filetypes=[("JSON", "*.json"), ("All files", "*.*")],
         )
         if not path:
@@ -1297,7 +1306,7 @@ class OllamaToBlenderApp(ctk.CTk):
             with open(path, "rb") as f:
                 raw = f.read()
             self._attached_image_b64 = base64.b64encode(raw).decode("ascii")
-            img = PILImage.open(io.BytesIO(raw))
+            img = Image.open(io.BytesIO(raw))
             img.thumbnail((96, 96))
             self._attached_image_thumb = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
             self.attach_thumb_label.configure(image=self._attached_image_thumb, text="")
@@ -1733,7 +1742,7 @@ class OllamaToBlenderApp(ctk.CTk):
         threading.Thread(target=self._refresh_status_async, daemon=True).start()
 
     def _refresh_status_async(self) -> None:
-        # Run both checks in parallel to halve latency
+        # Run ALL checks in parallel
         results: dict[str, bool] = {}
         def _check_ollama():
             try:
@@ -1745,11 +1754,23 @@ class OllamaToBlenderApp(ctk.CTk):
                 results["blender"] = self.blender.ping()
             except Exception:
                 results["blender"] = False
-        t1 = threading.Thread(target=_check_ollama, daemon=True)
-        t2 = threading.Thread(target=_check_blender, daemon=True)
-        t1.start(); t2.start()
-        t1.join(timeout=5); t2.join(timeout=5)
-        self.after(0, self._apply_status, results.get("ollama", False), results.get("blender", False))
+        def _check_app(key: str, port: int):
+            try:
+                results[key] = ping_tcp_addon(self.settings.blender_host, port)
+            except Exception:
+                results[key] = False
+
+        threads = [
+            threading.Thread(target=_check_ollama, daemon=True),
+            threading.Thread(target=_check_blender, daemon=True),
+        ]
+        for app_key, app_info in CREATIVE_APPS.items():
+            threads.append(threading.Thread(target=_check_app, args=(app_key, app_info["port"]), daemon=True))
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(timeout=5)
+        self.after(0, self._apply_status_all, results)
 
     def _refresh_blender_status(self) -> None:
         def _ping():
@@ -1760,10 +1781,19 @@ class OllamaToBlenderApp(ctk.CTk):
             self.after(0, self._apply_blender_only, ok)
         threading.Thread(target=_ping, daemon=True).start()
 
-    def _apply_status(self, ollama_ok: bool, blender_ok: bool) -> None:
+    def _apply_status_all(self, results: dict[str, bool]) -> None:
+        ollama_ok = results.get("ollama", False)
+        blender_ok = results.get("blender", False)
         self.pill_ollama.set_state("ok" if ollama_ok else "err", t("pill.ollama") if ollama_ok else t("pill.ollama.offline"))
         self.pill_blender.set_state("ok" if blender_ok else "warn", t("pill.blender") if blender_ok else t("pill.blender.offline"))
+        for app_key, pill in self._app_pills.items():
+            ok = results.get(app_key, False)
+            pill.set_state(
+                "ok" if ok else "warn",
+                t(f"pill.{app_key}") if ok else t(f"pill.{app_key}.offline"),
+            )
 
+    # Legacy alias kept for _refresh_blender_status callback
     def _apply_blender_only(self, ok: bool) -> None:
         self.pill_blender.set_state("ok" if ok else "warn", t("pill.blender") if ok else t("pill.blender.offline"))
 
@@ -1867,7 +1897,7 @@ class OllamaToBlenderApp(ctk.CTk):
 
 
 def main() -> None:
-    app = OllamaToBlenderApp()
+    app = UnificationApp()
     app.mainloop()
 
 

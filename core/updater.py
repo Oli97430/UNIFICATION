@@ -9,8 +9,8 @@ from typing import Optional
 import requests
 
 # Override these constants at import time if you fork the project
-RELEASES_API_URL = "https://api.github.com/repos/Oli97430/OllamaToBlender/releases/latest"
-RELEASES_HUMAN_URL = "https://github.com/Oli97430/OllamaToBlender/releases/latest"
+RELEASES_API_URL = "https://api.github.com/repos/Oli97430/UNIFICATION/releases/latest"
+RELEASES_HUMAN_URL = "https://github.com/Oli97430/UNIFICATION/releases/latest"
 
 
 _VER_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")

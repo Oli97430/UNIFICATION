@@ -1,4 +1,4 @@
-"""OllamaToBlender core modules."""
+"""UNIFICATION core modules."""
 from .addon_installer import (
     ADDON_FILE_NAME,
     ADDON_REMOTE_URL,
@@ -30,6 +30,7 @@ from .ollama_client import (
 )
 from .settings import HISTORY_PATH, LOG_PATH, Settings, load_history, save_history
 from .system_prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_QUERY, is_query_intent, pick_system_prompt
+from .tcp_ping import CREATIVE_APPS, ping_tcp_addon
 from .updater import UpdateInfo, check_for_update
 
 __all__ = [
@@ -70,6 +71,8 @@ __all__ = [
     "read_bundled_version",
     "save_history",
     "uninstall_addon",
+    "CREATIVE_APPS",
+    "ping_tcp_addon",
     "HISTORY_PATH",
     "LOG_PATH",
 ]

@@ -1,17 +1,18 @@
-<h1 align="center">OllamaToBlender</h1>
+<h1 align="center">UNIFICATION</h1>
 
 <p align="center">
-  <img src="assets/logo.png" alt="OllamaToBlender logo" width="140" />
+  <img src="assets/logo.png" alt="UNIFICATION logo" width="140" />
 </p>
 
 <p align="center">
-  <b>Drive Blender with a 100&nbsp;% local LLM — no API key, no cloud, no subscription.</b><br/>
-  Natural language prompt → Ollama → <code>bpy</code> script → <code>blender-mcp-addon</code> TCP server (port&nbsp;9876).
+  <b>Vibe codez vos modeles 3D, images et plus encore</b><br/>
+  Blender · FreeCAD · GIMP · Inkscape · Photoshop — 100&nbsp;% local, no API key, no cloud.<br/>
+  Natural language prompt → Ollama → Python script → TCP MCP addon.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Oli97430/OllamaToBlender/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Oli97430/OllamaToBlender?display_name=tag&color=ff7a29" alt="Latest release"/>
+  <a href="https://github.com/Oli97430/UNIFICATION/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Oli97430/UNIFICATION?display_name=tag&color=ff7a29" alt="Latest release"/>
   </a>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/blender-4.0%2B-orange" alt="Blender 4.0+"/>
@@ -42,7 +43,7 @@
 
 ## What it does
 
-OllamaToBlender is a modern desktop client (built with `customtkinter`) that replaces paid AI APIs as the brain behind [`blender-mcp-addon`](https://github.com/Oli97430/blender-mcp-addon). You describe what you want in plain language; the app asks a **local** Ollama model to write the `bpy` script, then executes it inside Blender over a TCP socket — all without a single byte leaving your machine.
+UNIFICATION is a modern desktop client (built with `customtkinter`) that bridges a **local** Ollama LLM to multiple creative applications: **Blender · FreeCAD · GIMP · Inkscape · Photoshop**. You describe what you want in plain language; the app asks Ollama to write the Python script, then executes it inside your creative app over a TCP socket — all without a single byte leaving your machine.
 
 | | |
 |---|---|
@@ -74,7 +75,7 @@ OllamaToBlender is a modern desktop client (built with `customtkinter`) that rep
 - **Save `.py`** per turn; **export** the entire conversation as JSON.
 - **Regenerate** (`↻`), **edit & resubmit** (`✎`), **copy** (`📋`) and **delete** (`🗑`) per turn.
 - **Collapsible turns** — click any response header to collapse/expand.
-- **Persistent history** across sessions (`~/.ollamatoblender/history.json`), with automatic token-budget trimming.
+- **Persistent history** across sessions (`~/.unification/history.json`), with automatic token-budget trimming.
 - **Token budget indicator** — shows live `used / budget tok` near the prompt.
 - **Dynamic prompt routing** — short read-only system prompt for inspection queries, full creator prompt for build requests.
 - **Scene context injection** — queries Blender for the current object list before each prompt, so the model knows what exists.
@@ -103,14 +104,14 @@ OllamaToBlender is a modern desktop client (built with `customtkinter`) that rep
 
 ### Option A — Windows executable (no Python required)
 
-1. Download `OllamaToBlender.exe` from the latest [GitHub Release](https://github.com/Oli97430/OllamaToBlender/releases/latest).
+1. Download `UNIFICATION.exe` from the latest [GitHub Release](https://github.com/Oli97430/UNIFICATION/releases/latest).
 2. Double-click. No installer, no virtual environment.
 
 ### Option B — Run from source (Windows / macOS / Linux)
 
 ```bash
-git clone https://github.com/Oli97430/OllamaToBlender.git
-cd OllamaToBlender
+git clone https://github.com/Oli97430/UNIFICATION.git
+cd UNIFICATION
 ```
 
 **Windows:**
@@ -167,7 +168,7 @@ python main.py
 
 ```
 ┌─────────────────────┐  prompt   ┌───────────┐  bpy script  ┌─────────────────────┐
-│  OllamaToBlender    │ ────────► │  Ollama   │ ──────────►  │  blender-mcp-addon  │
+│  UNIFICATION    │ ────────► │  Ollama   │ ──────────►  │  blender-mcp-addon  │
 │     (this app)      │ ◄──────── │  (local)  │              │    (port 9876)      │
 └─────────────────────┘  tokens   └───────────┘              └─────────────────────┘
           ▲                                                           │
@@ -228,10 +229,10 @@ Inline toggles in the chat bar:
 
 ## User files
 
-Everything lives under `~/.ollamatoblender/` — no registry, no hidden folders elsewhere.
+Everything lives under `~/.unification/` — no registry, no hidden folders elsewhere.
 
 ```
-~/.ollamatoblender/
+~/.unification/
 ├── settings.json     # persistent app settings
 ├── history.json      # conversation history (if enabled)
 └── events.log        # event log (visible in the Logs tab)
@@ -266,7 +267,7 @@ No telemetry. No network calls except to your local Ollama instance and GitHub's
 build.bat
 ```
 
-Produces `dist\OllamaToBlender.exe` (single-file, windowed, custom icon). On macOS / Linux:
+Produces `dist\UNIFICATION.exe` (single-file, windowed, custom icon). On macOS / Linux:
 
 ```bash
 ./build.sh
@@ -278,12 +279,12 @@ Produces `dist\OllamaToBlender.exe` (single-file, windowed, custom icon). On mac
 git tag -a v1.x.y -m "vX.Y.Z — description"
 git push origin main && git push origin v1.x.y
 
-gh release create v1.x.y dist/OllamaToBlender.exe \
+gh release create v1.x.y dist/UNIFICATION.exe \
     --title "vX.Y.Z — Short description" \
     --notes "Changelog here"
 ```
 
-The in-app update checker queries `https://api.github.com/repos/Oli97430/OllamaToBlender/releases/latest` and compares `tag_name` against `APP_VERSION` in `gui/app.py`. If a newer release exists, a toast appears with a link to the release page.
+The in-app update checker queries `https://api.github.com/repos/Oli97430/UNIFICATION/releases/latest` and compares `tag_name` against `APP_VERSION` in `gui/app.py`. If a newer release exists, a toast appears with a link to the release page.
 
 ---
 

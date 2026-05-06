@@ -30,7 +30,7 @@ from typing import Iterable
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         # --- window chrome
-        "app.subtitle": "   ·  Local-LLM bridge for Blender",
+        "app.subtitle": "   ·  Vibe codez vos modeles 3D, images et plus encore",
         "header.update.available": "Update available: {version}  ·  click About",
         "header.update.no_network": "",
 
@@ -51,11 +51,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "pill.blender": "Blender",
         "pill.blender.offline": "Blender offline",
         "pill.blender.tooltip": "Click to ping the Blender addon",
+        "pill.freecad": "FreeCAD",
+        "pill.freecad.offline": "FreeCAD offline",
+        "pill.freecad.tooltip": "Click to ping the FreeCAD addon",
+        "pill.gimp": "GIMP",
+        "pill.gimp.offline": "GIMP offline",
+        "pill.gimp.tooltip": "Click to ping the GIMP addon",
+        "pill.inkscape": "Inkscape",
+        "pill.inkscape.offline": "Inkscape offline",
+        "pill.inkscape.tooltip": "Click to ping the Inkscape server",
+        "pill.photoshop": "Photoshop",
+        "pill.photoshop.offline": "Photoshop offline",
+        "pill.photoshop.tooltip": "Click to ping the Photoshop server",
 
         # --- chat / empty state
-        "chat.empty.title": "OllamaToBlender",
-        "chat.empty.subtitle": "Describe what you want to build in Blender.\nOllama generates the bpy code, the addon runs it.",
-        "chat.placeholder": "Describe a Blender task…   (e.g. add a glass sphere on a wood plane)",
+        "chat.empty.title": "UNIFICATION",
+        "chat.empty.subtitle": "Describe what you want to create.\nOllama generates the code, the addon runs it in your creative app.",
+        "chat.placeholder": "Describe a task…   (e.g. add a glass sphere in Blender, draw a red circle in Inkscape)",
         "chat.hint.send": "Ctrl+Enter to send",
 
         "chat.btn.auto_run": "Auto-run",
@@ -103,8 +115,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- setup view
         "setup.title": "Setup",
         "setup.intro": (
-            "OllamaToBlender talks to Blender through the blender-mcp-addon "
-            "(a tiny TCP server, port 9876).  Install it once per Blender version, "
+            "UNIFICATION talks to creative apps through MCP addons "
+            "(tiny TCP servers on ports 9876-9880).  For Blender, install the addon once, "
             "then enable it from Edit → Preferences → Add-ons."
         ),
         "setup.detected.title": "Detected Blender installs",
@@ -180,11 +192,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.btn.test_connection": "Test connection",
         "settings.btn.test_connection.tooltip": "Send a ping to the Blender addon",
         "settings.persist": "Persist conversation history between sessions",
-        "settings.persist.tooltip": "Stored at ~/.ollamatoblender/history.json",
+        "settings.persist.tooltip": "Stored at ~/.unification/history.json",
         "settings.route": "Auto-route system prompt (query vs build)",
         "settings.route.tooltip": "Read-only inspections get a shorter prompt; creative builds get the full one",
         "settings.updates": "Check GitHub Releases for updates on startup",
-        "settings.updates.tooltip": "Notifies if a newer OllamaToBlender release is available",
+        "settings.updates.tooltip": "Notifies if a newer UNIFICATION release is available",
         "settings.max_history": "Max history tokens",
         "settings.max_history.tooltip": "Older messages are dropped when the conversation exceeds this budget",
         "settings.max_fix": "Auto-fix attempts",
@@ -204,10 +216,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # --- about view
         "about.body": (
-            "Run Blender from a local LLM — no Anthropic, no OpenAI, no API key.\n\n"
-            "Pipeline:  natural-language prompt  →  Ollama (Q4_K_M code model)  →  "
-            "Python bpy script  →  blender-mcp-addon TCP :9876.\n\n"
-            "Recommended model:  qwen2.5-coder:7b  (Q4_K_M, ~4.7 GB)."
+            "Vibe codez vos modeles 3D, images et plus encore\n"
+            "Blender · FreeCAD · GIMP · Inkscape · Photoshop\n\n"
+            "100 % local — no Anthropic, no OpenAI, no API key.\n\n"
+            "Pipeline:  natural-language prompt  →  Ollama  →  "
+            "Python script  →  TCP MCP addon.\n\n"
+            "Recommended model:  qwen2.5:32b"
         ),
         "about.shortcuts.title": "Keyboard shortcuts",
         "shortcut.send": "Send prompt",
@@ -264,7 +278,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
     "fr": {
         # --- window chrome
-        "app.subtitle": "   ·  Pont LLM local pour Blender",
+        "app.subtitle": "   ·  Vibe codez vos modeles 3D, images et plus encore",
         "header.update.available": "Mise à jour disponible : {version}  ·  voir À propos",
         "header.update.no_network": "",
 
@@ -285,11 +299,23 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "pill.blender": "Blender",
         "pill.blender.offline": "Blender hors ligne",
         "pill.blender.tooltip": "Cliquer pour pinger l'addon Blender",
+        "pill.freecad": "FreeCAD",
+        "pill.freecad.offline": "FreeCAD hors ligne",
+        "pill.freecad.tooltip": "Cliquer pour pinger l'addon FreeCAD",
+        "pill.gimp": "GIMP",
+        "pill.gimp.offline": "GIMP hors ligne",
+        "pill.gimp.tooltip": "Cliquer pour pinger l'addon GIMP",
+        "pill.inkscape": "Inkscape",
+        "pill.inkscape.offline": "Inkscape hors ligne",
+        "pill.inkscape.tooltip": "Cliquer pour pinger le serveur Inkscape",
+        "pill.photoshop": "Photoshop",
+        "pill.photoshop.offline": "Photoshop hors ligne",
+        "pill.photoshop.tooltip": "Cliquer pour pinger le serveur Photoshop",
 
         # --- chat / empty state
-        "chat.empty.title": "OllamaToBlender",
-        "chat.empty.subtitle": "Décris ce que tu veux construire dans Blender.\nOllama génère le code bpy, l'addon l'exécute.",
-        "chat.placeholder": "Décris une tâche Blender…   (ex. une sphère en verre sur un plan en bois)",
+        "chat.empty.title": "UNIFICATION",
+        "chat.empty.subtitle": "Décris ce que tu veux créer.\nOllama génère le code, l'addon l'exécute dans ton appli créative.",
+        "chat.placeholder": "Décris une tâche…   (ex. une sphère en verre dans Blender, un cercle rouge dans Inkscape)",
         "chat.hint.send": "Ctrl+Entrée pour envoyer",
 
         "chat.btn.auto_run": "Auto-exécution",
@@ -337,9 +363,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- setup view
         "setup.title": "Installation",
         "setup.intro": (
-            "OllamaToBlender communique avec Blender via le blender-mcp-addon "
-            "(petit serveur TCP sur le port 9876).  Installe-le une fois par version "
-            "de Blender, puis active-le depuis Édition → Préférences → Add-ons."
+            "UNIFICATION communique avec les applis créatives via des addons MCP "
+            "(petits serveurs TCP sur les ports 9876-9880).  Pour Blender, installe l'addon une fois, "
+            "puis active-le depuis Édition → Préférences → Add-ons."
         ),
         "setup.detected.title": "Installations Blender détectées",
         "setup.bundled_version": "Addon embarqué : v{version}",
@@ -414,11 +440,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.btn.test_connection": "Tester la connexion",
         "settings.btn.test_connection.tooltip": "Envoie un ping à l'addon Blender",
         "settings.persist": "Conserver l'historique entre les sessions",
-        "settings.persist.tooltip": "Stocké dans ~/.ollamatoblender/history.json",
+        "settings.persist.tooltip": "Stocké dans ~/.unification/history.json",
         "settings.route": "Routage automatique du system prompt (lecture / création)",
         "settings.route.tooltip": "Les inspections lecture seule reçoivent un prompt court ; les créations le prompt complet",
         "settings.updates": "Vérifier les mises à jour GitHub au démarrage",
-        "settings.updates.tooltip": "Notifie si une nouvelle version d'OllamaToBlender est disponible",
+        "settings.updates.tooltip": "Notifie si une nouvelle version d'UNIFICATION est disponible",
         "settings.max_history": "Tokens d'historique max",
         "settings.max_history.tooltip": "Les anciens messages sont droppés au-delà de ce budget",
         "settings.max_fix": "Tentatives auto-correction",
@@ -438,10 +464,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # --- about view
         "about.body": (
-            "Pilote Blender depuis un LLM local — sans Anthropic, sans OpenAI, sans clé d'API.\n\n"
-            "Pipeline :  prompt en langage naturel  →  Ollama (modèle code Q4_K_M)  →  "
-            "script Python bpy  →  blender-mcp-addon TCP :9876.\n\n"
-            "Modèle recommandé :  qwen2.5-coder:7b  (Q4_K_M, ~4,7 Go)."
+            "Vibe codez vos modeles 3D, images et plus encore\n"
+            "Blender · FreeCAD · GIMP · Inkscape · Photoshop\n\n"
+            "100 % local — sans Anthropic, sans OpenAI, sans clé d'API.\n\n"
+            "Pipeline :  prompt en langage naturel  →  Ollama  →  "
+            "script Python  →  addon TCP MCP.\n\n"
+            "Modèle recommandé :  qwen2.5:32b"
         ),
         "about.shortcuts.title": "Raccourcis clavier",
         "shortcut.send": "Envoyer le prompt",

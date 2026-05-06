@@ -32,9 +32,9 @@ desktop.ini
 .pytest_cache/
 
 # --- Local user data --------------------------------------------------------
-# (these are normally outside the repo at ~/.ollamatoblender/, but just in case
+# (these are normally outside the repo at ~/.unification/, but just in case
 # someone runs the app with cwd inside the repo and a relative path is set)
-.ollamatoblender/
+.unification/
 
 # --- Pillow / generated previews --------------------------------------------
 _otb_preview.png

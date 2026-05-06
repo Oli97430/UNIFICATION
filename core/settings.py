@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-CONFIG_DIR = Path.home() / ".ollamatoblender"
+CONFIG_DIR = Path.home() / ".unification"
 DEFAULT_PATH = CONFIG_DIR / "settings.json"
 HISTORY_PATH = CONFIG_DIR / "history.json"
 LOG_PATH = CONFIG_DIR / "events.log"
