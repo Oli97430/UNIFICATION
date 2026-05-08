@@ -48,13 +48,15 @@
 
 UNIFICATION is a modern desktop client (built with `customtkinter`) that bridges a **local** Ollama LLM to **five creative applications**:
 
-| App | Port | Addon type | What you can do |
-|---|---|---|---|
-| **Blender** | 9876 | Built-in addon (N-Panel) | Model, animate, render, sculpt, shade — full `bpy` API |
-| **FreeCAD** | 9877 | Macro plugin | Parametric CAD, Part/Draft/Sketch scripting |
-| **GIMP** | 9878 | Python-Fu plugin | Image editing, filters, batch processing |
-| **Inkscape** | 9879 | Standalone server | SVG manipulation via lxml/inkex + Inkscape CLI |
-| **Photoshop** | 9880 | Standalone server | COM automation (Win) / AppleScript (macOS) + ExtendScript |
+| App | Port | Addon type | Status | What you can do |
+|---|---|---|---|---|
+| **Blender** | 9876 | Built-in addon (N-Panel) | **Functional** | Model, animate, render, sculpt, shade — full `bpy` API |
+| **FreeCAD** | 9877 | Macro plugin | **Functional** | Parametric CAD, Part/Draft/Sketch scripting |
+| **GIMP** | 9878 | Standalone server | **In progress** | TCP server works; GIMP module access limited (GIMP 3.x architectural constraint) |
+| **Inkscape** | 9879 | Standalone server | **In progress** | SVG manipulation via lxml/inkex + Inkscape CLI |
+| **Photoshop** | 9880 | Standalone server | **In progress** | COM automation (Win) / AppleScript (macOS) + ExtendScript |
+
+> **Blender** and **FreeCAD** are fully functional and production-tested. GIMP, Inkscape, and Photoshop addons are work-in-progress — the TCP servers run and respond to pings, but full creative-app integration is still being tested and refined.
 
 You describe what you want in plain language; the app asks Ollama to write the Python script, then executes it inside your creative app over a TCP socket — **all without a single byte leaving your machine**.
 
@@ -220,9 +222,9 @@ The status pill turns green when connected.
    - **Linux:** `~/.config/GIMP/3.2/plug-ins/gimp_mcp_addon/`
 2. Copy `gimp_mcp_addon.py` inside that subfolder.
 3. Restart GIMP.
-4. Open or create an image, then Filters → **MCP Server Start**.
+4. Filters → **MCP Server Start** (works with or without an open image).
 
-> **Note:** GIMP 3 kills plugin subprocesses after execution, so the addon spawns a **detached standalone Python process** that survives independently. The menu item "MCP Server Stop" terminates it.
+> **Note:** GIMP 3.x kills plugin subprocesses after each procedure call, so the addon spawns a **detached standalone Python process** that survives independently. The TCP server works and responds to pings, but GIMP-specific modules (`pdb`, `gimp`, `gimpfu`) are **not yet accessible** from the standalone process. Generic Python execution works. Full GIMP PDB integration via a D-Bus bridge is planned for a future release. The menu item "MCP Server Stop" terminates the standalone server.
 
 ### Inkscape (port 9879)
 
@@ -506,7 +508,7 @@ No telemetry. No network calls except to your local Ollama instance and GitHub's
 
 | Symptom | Fix |
 |---|---|
-| **GIMP** pill stays red | Open an image first, then Filters → MCP Server Start. GIMP 3 requires an open image for the menu item to be active. |
+| **GIMP** pill stays red | Filters → MCP Server Start. If the menu item is greyed out, update the addon (v1.1.0+ works without an open image). |
 | Plugin not visible in menus | GIMP 2.10: check file permissions (`chmod +x` on Linux/macOS). GIMP 3.0+: the script must be in a subfolder with the same name (`gimp_mcp_addon/gimp_mcp_addon.py`). |
 | Server started but ping fails | GIMP 3 spawns a detached Python process. Check if it's running (`gimp_mcp_server.pid` in your temp folder). Try Filters → MCP Server Stop, then Start again. |
 

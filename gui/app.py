@@ -70,7 +70,7 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 class UnificationApp(ctk.CTk):
     APP_TITLE = "UNIFICATION"
-    APP_VERSION = "2.0.0"
+    APP_VERSION = "2.1.0"
 
     def __init__(self) -> None:
         super().__init__()

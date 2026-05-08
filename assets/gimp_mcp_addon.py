@@ -8,6 +8,23 @@ Exposes a local TCP server (port 9878) so that UNIFICATION, Claude,
 Cursor, or any MCP-compatible client can send Python-Fu code to execute
 inside GIMP and receive the results in real-time.
 
+Architecture (GIMP 3.x)
+------------------------
+GIMP 3 kills plugin sub-processes after each procedure call, so no
+in-process TCP server can survive.  Instead:
+
+1. Clicking **Filters > MCP Server Start** spawns a **standalone**
+   Python process that listens on port 9878.
+2. That standalone server forwards GIMP-specific code to the built-in
+   **Script-Fu server** (port 10008) using ``python-fu-eval``, so the
+   code still executes inside the running GIMP instance with full
+   PDB access.
+3. If the Script-Fu server is not running, the standalone server
+   executes code locally (no GIMP modules available).
+
+The user must also start the Script-Fu server:
+  Filters > Script-Fu > Start Server…  (keep default port 10008)
+
 Protocol  (identical to the Blender MCP addon)
 --------
 - Transport : raw TCP, null-byte (\\0) delimited JSON frames
@@ -31,14 +48,18 @@ Installation — GIMP 3.0+
 1. Copy to: ~/.config/GIMP/3.0/plug-ins/gimp_mcp_addon/gimp_mcp_addon.py
    (Note: GIMP 3 requires the plugin in a subfolder with the same name)
 2. Restart GIMP.
-3. Go to Filters -> MCP Server Start
+3. Go to Filters -> Script-Fu -> Start Server  (keep port 10008)
+4. Go to Filters -> MCP Server Start
 """
 
 from __future__ import annotations
 
 import json
+import os
 import queue
 import socket
+import struct
+import subprocess
 import sys
 import threading
 import traceback
@@ -50,7 +71,7 @@ from io import StringIO
 
 _addon_info = {
     "name": "GIMP MCP Server",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
 }
 
 # ---------------------------------------------------------------------------
@@ -58,6 +79,7 @@ _addon_info = {
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PORT    = 9878
+_SCRIPTFU_PORT   = 10008
 _HOST            = "127.0.0.1"
 _TICK_INTERVAL   = 50   # ms
 _CLIENT_TIMEOUT  = 300.0
@@ -76,47 +98,171 @@ _running = False
 
 
 # ---------------------------------------------------------------------------
+# Script-Fu bridge — execute code inside GIMP via its Script-Fu TCP server
+# ---------------------------------------------------------------------------
+
+def _scriptfu_send(command: str, host: str = _HOST,
+                   port: int = _SCRIPTFU_PORT,
+                   timeout: float = 1.0) -> tuple[bool, str]:
+    """Send a Script-Fu command to GIMP's Script-Fu server.
+
+    Returns (ok, response_text).
+    Protocol: 1-byte magic 'G' + 2-byte big-endian length + command.
+    Response: 1-byte magic 'G' + 1-byte error code + 2-byte length + text.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            cmd_bytes = command.encode("utf-8")
+            header = b"G" + struct.pack("!H", len(cmd_bytes))
+            sock.sendall(header + cmd_bytes)
+
+            # Read response header (4 bytes: G + error + 2-byte length)
+            resp_hdr = b""
+            while len(resp_hdr) < 4:
+                chunk = sock.recv(4 - len(resp_hdr))
+                if not chunk:
+                    break
+                resp_hdr += chunk
+
+            if len(resp_hdr) < 4:
+                return False, "Script-Fu: incomplete response header"
+
+            _magic, err_code, resp_len = struct.unpack("!cBH", resp_hdr)
+            # Read response body
+            body = b""
+            while len(body) < resp_len:
+                chunk = sock.recv(resp_len - len(body))
+                if not chunk:
+                    break
+                body += chunk
+
+            text = body.decode("utf-8", errors="replace")
+            return (err_code == 0), text
+    except (ConnectionRefusedError, ConnectionResetError,
+            TimeoutError, OSError):
+        return False, "__CONNECTION_FAILED__"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _execute_via_scriptfu(code: str) -> dict | None:
+    """Try to execute Python code inside GIMP via Script-Fu bridge.
+
+    Wraps the code in a python-fu-eval call and sends it to GIMP's
+    Script-Fu server.  Returns None if the Script-Fu server is not
+    reachable (caller should fall back to local execution).
+    """
+    # Escape the Python code for embedding in a Script-Fu string literal.
+    escaped = code.replace("\\", "\\\\").replace('"', '\\"')
+    sf_cmd = f'(python-fu-eval 1 "{escaped}")'
+
+    ok, text = _scriptfu_send(sf_cmd)
+
+    if text == "__CONNECTION_FAILED__":
+        return None  # Script-Fu server not running — fall back
+
+    if ok:
+        return {
+            "status": "ok",
+            "result": text.strip() if text.strip() else None,
+            "stdout": text,
+        }
+    else:
+        return {
+            "status": "error",
+            "message": f"Script-Fu bridge error: {text}",
+            "stdout": "",
+        }
+
+
+# ---------------------------------------------------------------------------
 # Core execution
 # ---------------------------------------------------------------------------
 
+_has_gimp_modules = False  # set True if running inside GIMP process
+
+
+_GIMP_KEYWORDS = {"gimp", "pdb", "gimpfu", "gimpenums", "Gimp", "GLib", "Gio"}
+
+
+def _code_needs_gimp(code: str) -> bool:
+    """Heuristic: does *code* reference GIMP-specific names?"""
+    for kw in _GIMP_KEYWORDS:
+        if kw in code:
+            return True
+    return False
+
+
 def _execute_code(code: str) -> dict:
-    """Execute Python code with GIMP modules in namespace."""
+    """Execute Python code, using GIMP modules if available.
+
+    Resolution order:
+    1. Direct execution with injected GIMP modules (inside GIMP process).
+    2. Script-Fu bridge → python-fu-eval (standalone server → GIMP).
+    3. Local execution without GIMP modules (generic Python).
+       If the code references GIMP modules, returns a clear error.
+    """
+    global _has_gimp_modules
+
+    # --- Path 1: inside GIMP (GIMP 2.x in-process server) ----------------
+    if _has_gimp_modules:
+        return _execute_code_local(code, inject_gimp=True)
+
+    # --- Path 2: Script-Fu bridge (standalone → GIMP 3.x) ----------------
+    result = _execute_via_scriptfu(code)
+    if result is not None:
+        return result
+
+    # --- Path 3: local execution (no GIMP modules) -----------------------
+    result = _execute_code_local(code, inject_gimp=False)
+
+    # If it failed because of missing GIMP modules, give a clear message
+    if (result.get("status") == "error"
+            and _code_needs_gimp(code)
+            and "ModuleNotFoundError" in result.get("message", "")):
+        result["message"] = (
+            "[GIMP MCP] GIMP modules (gimp, pdb, gimpfu...) are not "
+            "available in standalone mode.\n"
+            "GIMP 3.x kills plugin sub-processes, so the MCP server "
+            "runs as a separate process without GIMP context.\n\n"
+            "- Use generic Python code (no gimp imports) for now.\n"
+            "- GIMP-specific control will be added in a future version "
+            "via a D-Bus bridge.\n\n"
+            "Original error: " + result["message"].split("\n")[-2]
+        )
+    return result
+
+
+def _execute_code_local(code: str, *, inject_gimp: bool = True) -> dict:
+    """Execute Python code locally with optional GIMP module injection."""
     saved_out, saved_err = sys.stdout, sys.stderr
     sys.stdout = sys.stderr = cap = StringIO()
     try:
         ns = {"result": None}
 
-        # Inject GIMP modules into namespace
-        try:
-            import gimp
-            ns["gimp"] = gimp
-        except ImportError:
-            pass
-        try:
-            from gimp import pdb
-            ns["pdb"] = pdb
-        except ImportError:
-            pass
-        try:
-            import gimpfu
-            ns["gimpfu"] = gimpfu
-        except ImportError:
-            pass
-        try:
-            import gimpenums
-            ns["gimpenums"] = gimpenums
-        except ImportError:
-            pass
-        # GIMP 3.0+ uses GObject introspection
-        try:
-            import gi
-            gi.require_version("Gimp", "3.0")
-            from gi.repository import Gimp, GLib, Gio
-            ns["Gimp"] = Gimp
-            ns["GLib"] = GLib
-            ns["Gio"] = Gio
-        except (ImportError, ValueError):
-            pass
+        if inject_gimp:
+            # Inject GIMP modules into namespace
+            for mod_name, import_code in [
+                ("gimp",     "import gimp"),
+                ("pdb",      "from gimp import pdb"),
+                ("gimpfu",   "import gimpfu"),
+                ("gimpenums","import gimpenums"),
+            ]:
+                try:
+                    exec(import_code, ns)
+                except ImportError:
+                    pass
+            # GIMP 3.0+ uses GObject introspection
+            try:
+                import gi
+                gi.require_version("Gimp", "3.0")
+                from gi.repository import Gimp, GLib, Gio
+                ns["Gimp"] = Gimp
+                ns["GLib"] = GLib
+                ns["Gio"] = Gio
+            except (ImportError, ValueError):
+                pass
 
         exec(compile(code, "<mcp>", "exec"), ns)
         return {
@@ -330,7 +476,14 @@ _standalone_requested = "--standalone" in sys.argv
 _is_gimp_subprocess = any(a == "-gimp" for a in sys.argv)
 
 if _standalone_requested or (__name__ == "__main__" and not _is_gimp_subprocess):
-    print("[GIMP MCP] Running in standalone mode (no GIMP integration)")
+    print("[GIMP MCP] Running in standalone mode")
+    # Check if Script-Fu bridge is available
+    ok, _ = _scriptfu_send("(gimp-version)")
+    if ok:
+        print("[GIMP MCP] Script-Fu bridge connected → full GIMP access via port 10008")
+    else:
+        print("[GIMP MCP] Script-Fu bridge unavailable — start it in GIMP:")
+        print("           Filters > Script-Fu > Start Server  (port 10008)")
     server_start(standalone=True)
     try:
         threading.Event().wait()  # block forever
@@ -345,6 +498,8 @@ if _standalone_requested or (__name__ == "__main__" and not _is_gimp_subprocess)
 
 try:
     from gimpfu import register, main
+
+    _has_gimp_modules = True  # running inside GIMP 2
 
     def _gimp2_start(image=None, drawable=None):
         server_start()
@@ -387,112 +542,93 @@ except ImportError:
 # GIMP 3.x Plugin Registration  (GObject-based)
 # ---------------------------------------------------------------------------
 #
-# GIMP 3 kills plugin subprocesses after their procedure callback returns.
-# Strategy: the "start" callback spawns a **detached standalone Python
-# process** that runs this same script in standalone mode, so the TCP
-# server lives independently of the GIMP plugin lifecycle.
-# The "stop" callback kills that detached process.
+# Strategy: GIMP 3 kills plugin sub-processes after each procedure call,
+# so we spawn a *detached standalone* Python process that survives.  That
+# standalone process bridges to GIMP's Script-Fu server (port 10008) for
+# code that needs PDB / gimp module access.
 # ---------------------------------------------------------------------------
-
-_STANDALONE_PID_FILE = None   # set at import time below
 
 try:
     import gi
     gi.require_version("Gimp", "3.0")
     from gi.repository import Gimp, GObject, GLib
-    import subprocess as _sp, os as _os, tempfile as _tf, signal as _sig
 
-    _STANDALONE_PID_FILE = _os.path.join(_tf.gettempdir(), "gimp_mcp_server.pid")
-
+    # Sensitivity: always available, even without an image open.
     _SENSITIVITY = (
         Gimp.ProcedureSensitivityMask.DRAWABLE
         | Gimp.ProcedureSensitivityMask.DRAWABLES
         | Gimp.ProcedureSensitivityMask.NO_DRAWABLES
+        | Gimp.ProcedureSensitivityMask.NO_IMAGE
     )
 
-    def _find_system_python() -> str:
-        """Return a system Python 3, avoiding GIMP's bundled interpreter."""
-        import shutil
-        for name in ("python", "python3", "py"):
-            p = shutil.which(name)
-            if p and "gimp" not in p.lower():
+    def _find_python() -> str:
+        """Return path to a usable Python interpreter."""
+        # Prefer GIMP's bundled Python (has gi bindings)
+        gimp_dir = os.path.dirname(os.path.dirname(sys.executable))
+        candidates = [
+            os.path.join(gimp_dir, "bin", "python.exe"),
+            os.path.join(gimp_dir, "bin", "python3.exe"),
+            sys.executable,
+        ]
+        for p in candidates:
+            if os.path.isfile(p):
                 return p
-        # Fallback: use current interpreter even if it's GIMP's — the
-        # --standalone flag ensures the bg_tick thread is used.
         return sys.executable
 
-    def _spawn_standalone_server() -> str:
-        """Launch this script in standalone mode as a detached process."""
-        dbg = _os.path.join(_tf.gettempdir(), "gimp_mcp_debug.txt")
+    def _spawn_standalone() -> str:
+        """Spawn a detached standalone MCP server process."""
+        import tempfile
+
+        script_path = os.path.abspath(__file__)
+        python_exe = _find_python()
+
+        # Check if already running on port 9878
         try:
-            # Kill any previous standalone server
-            _kill_standalone_server()
+            with socket.create_connection((_HOST, _DEFAULT_PORT), timeout=1.0):
+                return f"[GIMP MCP] Already running on port {_DEFAULT_PORT}"
+        except Exception:
+            pass
 
-            python = _find_system_python()
-            script = _os.path.abspath(__file__)
+        # Kill any leftover process on the port
+        # (not strictly needed — bind will fail if port is in use)
 
-            # Launch detached — survives GIMP plugin subprocess death
-            if _os.name == "nt":
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                DETACHED_PROCESS = 0x00000008
-                proc = _sp.Popen(
-                    [python, script, "--standalone"],
-                    creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
-                    close_fds=True,
-                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, stdin=_sp.DEVNULL,
-                )
-            else:
-                proc = _sp.Popen(
-                    [python, script, "--standalone"],
-                    start_new_session=True,
-                    close_fds=True,
-                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, stdin=_sp.DEVNULL,
-                )
+        # Spawn detached process
+        if sys.platform == "win32":
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            DETACHED_PROCESS = 0x00000008
+            proc = subprocess.Popen(
+                [python_exe, script_path, "--standalone"],
+                creationflags=CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                close_fds=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            proc = subprocess.Popen(
+                [python_exe, script_path, "--standalone"],
+                start_new_session=True,
+                close_fds=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
-            # Save PID for later stop
-            with open(_STANDALONE_PID_FILE, "w") as f:
-                f.write(str(proc.pid))
-
-            import time
-            time.sleep(1.5)  # give the server a moment to bind
-
-            # Verify it actually started
-            import socket as _socket
+        # Wait briefly for it to come up
+        import time
+        for _ in range(20):
+            time.sleep(0.25)
             try:
-                with _socket.create_connection((_HOST, _DEFAULT_PORT), timeout=2.0):
-                    pass
-                msg = f"[GIMP MCP] Standalone server started (PID {proc.pid}) on port {_DEFAULT_PORT}"
-            except OSError:
-                msg = f"[GIMP MCP] Process spawned (PID {proc.pid}) but port {_DEFAULT_PORT} not yet reachable"
+                with socket.create_connection((_HOST, _DEFAULT_PORT), timeout=0.5):
+                    return (
+                        f"[GIMP MCP] Standalone server started (PID {proc.pid}) "
+                        f"on port {_DEFAULT_PORT}"
+                    )
+            except Exception:
+                continue
 
-            with open(dbg, "w") as f:
-                f.write(f"OK: {msg}\n")
-            return msg
-
-        except Exception as exc:
-            with open(dbg, "w") as f:
-                f.write(f"ERROR: {exc}\n")
-            return f"[GIMP MCP] Failed to spawn: {exc}"
-
-    def _kill_standalone_server() -> str:
-        """Kill a previously spawned standalone server."""
-        if not _STANDALONE_PID_FILE or not _os.path.exists(_STANDALONE_PID_FILE):
-            return "[GIMP MCP] No running server found"
-        try:
-            with open(_STANDALONE_PID_FILE) as f:
-                pid = int(f.read().strip())
-            if _os.name == "nt":
-                _os.kill(pid, _sig.SIGTERM)
-            else:
-                _os.kill(pid, _sig.SIGTERM)
-            _os.remove(_STANDALONE_PID_FILE)
-            return f"[GIMP MCP] Stopped standalone server (PID {pid})"
-        except (ProcessLookupError, OSError):
-            try:
-                _os.remove(_STANDALONE_PID_FILE)
-            except OSError:
-                pass
-            return "[GIMP MCP] Server was not running"
+        return (
+            f"[GIMP MCP] Server process spawned (PID {proc.pid}) but port "
+            f"{_DEFAULT_PORT} not yet responding"
+        )
 
     class MCPServerPlugin(Gimp.PlugIn):
 
@@ -518,17 +654,32 @@ try:
             return procedure
 
         def _start_run(self, procedure, run_mode, image, drawables, config, run_data):
+            import tempfile
+            dbg = os.path.join(tempfile.gettempdir(), "gimp_mcp_debug.txt")
             try:
-                msg = _spawn_standalone_server()
+                msg = _spawn_standalone()
+                with open(dbg, "w") as f:
+                    f.write(f"OK: {msg}\n")
                 Gimp.message(str(msg))
             except Exception as exc:
+                with open(dbg, "w") as f:
+                    f.write(f"ERROR: {exc}\n{traceback.format_exc()}")
                 Gimp.message(f"[MCP] start error: {exc}")
             return procedure.new_return_values(Gimp.PDBStatusType.SUCCESS, GLib.Error())
 
         def _stop_run(self, procedure, run_mode, image, drawables, config, run_data):
             try:
-                msg = _kill_standalone_server()
-                Gimp.message(str(msg))
+                # Send shutdown signal to standalone server
+                try:
+                    with socket.create_connection((_HOST, _DEFAULT_PORT), timeout=2.0) as s:
+                        s.sendall(
+                            (json.dumps({"type": "execute",
+                                         "code": "import os; os._exit(0)"})
+                             + "\0").encode("utf-8")
+                        )
+                except Exception:
+                    pass
+                Gimp.message("[GIMP MCP] Server stopped")
             except Exception as exc:
                 Gimp.message(f"[MCP] stop error: {exc}")
             return procedure.new_return_values(Gimp.PDBStatusType.SUCCESS, GLib.Error())
