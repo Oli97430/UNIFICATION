@@ -100,6 +100,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "turn.btn.regenerate": "↻  Regenerate",
         "turn.btn.regenerate.tooltip": "Re-ask the model with the same prompt",
         "turn.btn.save_py": "Save .py",
+        "code.copy": "Copy",
+        "code.copied": "Copied",
+        "code.save_title": "Save Python script",
+        "code.lines": "{n} lines",
+        "code.line": "{n} line",
         "turn.btn.save_py.tooltip": "Save the generated script to a .py file",
         "turn.btn.delete": "🗑",
         "turn.btn.delete.tooltip": "Remove this turn from the conversation",
@@ -216,8 +221,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # --- settings view
         "settings.title": "Settings",
+        "settings.section.provider": "LLM Provider",
         "settings.section.ollama": "Ollama (local LLM)",
-        "settings.section.blender": "Blender (TCP addon)",
+        "settings.section.blender": "Creative App (TCP connection)",
         "settings.section.behaviour": "Behaviour",
         "settings.section.appearance": "Appearance",
         "settings.endpoint": "Endpoint",
@@ -227,11 +233,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.keepalive": "Keep-alive",
         "settings.keepalive.tooltip": "How long Ollama keeps the model loaded after a request, e.g. 5m, 1h, -1 for forever",
         "settings.host": "Host",
-        "settings.host.tooltip": "Usually 127.0.0.1 if Blender runs on the same machine",
+        "settings.host.tooltip": "Usually 127.0.0.1 if the creative app runs on the same machine",
         "settings.port": "Port",
-        "settings.port.tooltip": "The addon defaults to 9876",
+        "settings.port.tooltip": "Default: 9876 (Blender). FreeCAD 9877, GIMP 9878, Inkscape 9879, Photoshop 9880",
         "settings.btn.test_connection": "Test connection",
-        "settings.btn.test_connection.tooltip": "Send a ping to the Blender addon",
+        "settings.btn.test_connection.tooltip": "Send a ping to the target creative app addon",
         "settings.persist": "Persist conversation history between sessions",
         "settings.persist.tooltip": "Stored at ~/.unification/history.json",
         "settings.route": "Auto-route system prompt (query vs build)",
@@ -240,12 +246,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.updates.tooltip": "Notifies if a newer UNIFICATION release is available",
         "settings.max_history": "Max history tokens",
         "settings.max_history.tooltip": "Older messages are dropped when the conversation exceeds this budget",
+        "settings.scene_ctx": "Inject scene context (Blender only)",
+        "settings.scene_ctx.tooltip": "Send the list of scene objects to the model before each prompt",
         "settings.max_fix": "Auto-fix attempts",
         "settings.max_fix.tooltip": "Maximum number of automatic correction rounds per turn",
+        "settings.num_ctx": "Context window (num_ctx)",
+        "settings.num_ctx.tooltip": "Token context size sent to Ollama — increase for large prompts, decrease to save VRAM",
         "settings.theme": "Theme",
         "settings.language": "Language",
         "settings.language.tooltip": "Some labels only refresh after restart",
         "settings.btn.save": "Save settings",
+        "settings.provider.api_key": "{provider} API Key",
+        "settings.provider.model": "{provider} Model",
+        "dialog.export_title": "Export conversation",
+        "dialog.attach_title": "Attach an image",
 
         # --- logs view
         "logs.title": "Logs",
@@ -259,10 +273,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "about.body": (
             "Vibe codez vos modeles 3D, images et plus encore\n"
             "Blender · FreeCAD · GIMP · Inkscape · Photoshop\n\n"
-            "100 % local — no Anthropic, no OpenAI, no API key.\n\n"
-            "Pipeline:  natural-language prompt  →  Ollama  →  "
+            "Local-first with Ollama — optionally connect\n"
+            "Claude, OpenAI or Gemini via API key.\n\n"
+            "Pipeline:  natural-language prompt  →  LLM  →  "
             "Python script  →  TCP MCP addon.\n\n"
-            "Recommended model:  qwen2.5:32b"
+            "Recommended local model:  qwen2.5:32b"
         ),
         "about.shortcuts.title": "Keyboard shortcuts",
         "shortcut.send": "Send prompt",
@@ -308,13 +323,87 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- token budget
         "chat.token_budget.tooltip": "Tokens used / budget — older turns are trimmed automatically",
 
-        # --- empty state suggestion chips (sculpting-focused)
-        "suggest.sculpt_suzanne": "Add Suzanne, give it a Multires modifier (3 subdivisions), then switch to Sculpt mode ready for the Grab brush",
-        "suggest.sculpt_dyntopo": "Spawn an icosphere, enable Dyntopo (detail 2.0) and enter Sculpt mode",
-        "suggest.sculpt_voxel_remesh": "Voxel-remesh the active mesh at 0.05, then enter Sculpt mode for further detailing",
-        "suggest.sculpt_mirror_multires": "Add a Mirror modifier (X axis) and a Multires modifier (level 4) to the active mesh for symmetric sculpting",
-        "suggest.sculpt_shape_keys": "Create three shape keys on the active mesh — smile, frown, surprise — leaving each value at 0 for now",
-        "suggest.sculpt_decimate": "Decimate the active sculpt to 25 % polycount and apply it, ready for retopology baking",
+        # --- empty state suggestion chips — 12 per creative app
+        # Blender
+        "suggest.blender.1": "Add a metallic donut with colorful sprinkles scattered on top",
+        "suggest.blender.2": "Create a low-poly landscape with mountains, pine trees and a lake",
+        "suggest.blender.3": "Animate a bouncing rubber ball with squash and stretch over 60 frames",
+        "suggest.blender.4": "Set up a 3-point studio lighting rig (key, fill, rim) around the active object",
+        "suggest.blender.5": "Create a glass wine bottle with refraction and caustics material",
+        "suggest.blender.6": "Add a particle system that emits sparks upward from the selected object",
+        "suggest.blender.7": "Build a spiral staircase using an array modifier on a curve path",
+        "suggest.blender.8": "Sculpt Suzanne with a Multires modifier (3 subdivisions) ready for the Grab brush",
+        "suggest.blender.9": "Create a procedural brick wall using geometry nodes",
+        "suggest.blender.10": "Set up a turntable camera that orbits 360° around the origin in 120 frames",
+        "suggest.blender.11": "Simulate dominos falling in a chain reaction using rigid body physics",
+        "suggest.blender.12": "Create an ocean surface with a foam texture and an HDRI sky background",
+        # FreeCAD
+        "suggest.freecad.1": "Create a parametric spur gear with 24 teeth, module 2",
+        "suggest.freecad.2": "Draw a circular flange with 6 bolt holes evenly spaced",
+        "suggest.freecad.3": "Build an L-bracket with 3 mm fillets on all inner edges",
+        "suggest.freecad.4": "Model a 90° pipe elbow with inner radius 20 mm and wall thickness 3 mm",
+        "suggest.freecad.5": "Design an M10 hex nut (across-flats 17 mm, height 8 mm)",
+        "suggest.freecad.6": "Create a phone stand with a 60° back angle and cable slot",
+        "suggest.freecad.7": "Build a box with finger joints for 3 mm laser-cut plywood",
+        "suggest.freecad.8": "Model a bearing housing with chamfers, fillets and mounting holes",
+        "suggest.freecad.9": "Create a helical compression spring (wire Ø 2 mm, 8 coils, OD 20 mm)",
+        "suggest.freecad.10": "Design a stepped shaft with three diameters and a keyway slot",
+        "suggest.freecad.11": "Boolean-cut a rectangular pocket into the top face of a box",
+        "suggest.freecad.12": "Model a T-slot extrusion profile (20×20 mm) for aluminium framing",
+        # GIMP
+        "suggest.gimp.1": "Create a 1920×1080 gradient background from deep blue to purple",
+        "suggest.gimp.2": "Apply a vintage sepia tone effect to the current image",
+        "suggest.gimp.3": "Add a drop shadow to the active layer (offset 5 px, blur 10 px)",
+        "suggest.gimp.4": "Create a circular vignette: darken the edges of the current photo",
+        "suggest.gimp.5": "Sharpen the current image with Unsharp Mask (amount 80, radius 3)",
+        "suggest.gimp.6": "Add a text layer with 'UNIFICATION' in white, 72 px, centered",
+        "suggest.gimp.7": "Split the image into R, G, B channels as separate grayscale layers",
+        "suggest.gimp.8": "Resize the canvas to a 1:1 square and center the existing content",
+        "suggest.gimp.9": "Apply a Gaussian blur (radius 12) to everything except the center",
+        "suggest.gimp.10": "Draw a 4 px red border around the edges of the image on a new layer",
+        "suggest.gimp.11": "Create a duotone effect: map shadows to dark teal, highlights to cream",
+        "suggest.gimp.12": "Generate a tileable noise pattern (512×512) for use as a texture",
+        # Inkscape
+        "suggest.inkscape.1": "Draw a 5-pointed star filled with a gold-to-orange gradient",
+        "suggest.inkscape.2": "Create a logo: a circle with the letter 'U' centered inside",
+        "suggest.inkscape.3": "Build a colour palette strip — 7 equally-spaced rectangles in rainbow order",
+        "suggest.inkscape.4": "Draw a simple flowchart: 3 boxes connected by arrows",
+        "suggest.inkscape.5": "Create a sine wave path stretching across the full page width",
+        "suggest.inkscape.6": "Design an icon: rounded square with a lightning bolt inside",
+        "suggest.inkscape.7": "Draw an 8×8 checkerboard grid of alternating black and white squares",
+        "suggest.inkscape.8": "Create a circular badge with the text 'PREMIUM' on a curved path",
+        "suggest.inkscape.9": "Build a bar chart with 5 bars of different heights and colours",
+        "suggest.inkscape.10": "Draw a fractal tree using recursive branching lines",
+        "suggest.inkscape.11": "Create a geometric mandala pattern with 12-fold rotational symmetry",
+        "suggest.inkscape.12": "Design a business card layout (85×55 mm) with placeholder text and logo area",
+        # Photoshop
+        "suggest.photoshop.1": "Create a 4K canvas (3840×2160) with a radial dark-to-midnight gradient",
+        "suggest.photoshop.2": "Apply motion blur at 45° angle and 20 px distance to the active layer",
+        "suggest.photoshop.3": "Add a Curves adjustment layer to boost midtone contrast",
+        "suggest.photoshop.4": "Create a circular layer mask that reveals only the centre of the image",
+        "suggest.photoshop.5": "Duplicate the layer, desaturate the copy, set blend mode to Overlay",
+        "suggest.photoshop.6": "Add Inner Glow and Bevel & Emboss effects to the active layer",
+        "suggest.photoshop.7": "Resize the image to 1920 px wide, keep aspect ratio, sharpen for web",
+        "suggest.photoshop.8": "Add a text layer with drop shadow and outer glow effects",
+        "suggest.photoshop.9": "Apply a High Pass filter (radius 5) on a duplicate for detail sharpening",
+        "suggest.photoshop.10": "Create a 2×2 photo collage grid on a new 4K canvas",
+        "suggest.photoshop.11": "Add a Color Lookup adjustment layer for a cinematic orange-teal grade",
+        "suggest.photoshop.12": "Create a neon glow text effect with outer glow on a dark background",
+
+        # --- prompt system badges
+        "prompt.mode.creator": "creator",
+        "prompt.mode.query": "query",
+        "prompt.mode.fix": "fix #{n}",
+        "cat.materials": "materials",
+        "cat.lighting": "lighting",
+        "cat.physics": "physics",
+        "cat.particles": "particles",
+        "cat.sculpting": "sculpting",
+        "cat.rendering": "rendering",
+        "cat.geometry_nodes": "geo-nodes",
+        "cat.modeling": "modeling",
+        "cat.animation": "animation",
+        "cat.import_export": "import/export",
     },
 
     "fr": {
@@ -390,6 +479,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "turn.btn.regenerate.tooltip": "Redemander au modèle avec le même prompt",
         "turn.btn.save_py": "Sauver .py",
         "turn.btn.save_py.tooltip": "Sauvegarder le script généré dans un fichier .py",
+        "code.copy": "Copier",
+        "code.copied": "Copié",
+        "code.save_title": "Sauvegarder le script Python",
+        "code.lines": "{n} lignes",
+        "code.line": "{n} ligne",
         "turn.btn.delete": "🗑",
         "turn.btn.delete.tooltip": "Supprimer ce turn de la conversation",
         "turn.btn.stop": "■  Stop",
@@ -505,8 +599,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # --- settings view
         "settings.title": "Paramètres",
+        "settings.section.provider": "Fournisseur LLM",
         "settings.section.ollama": "Ollama (LLM local)",
-        "settings.section.blender": "Blender (addon TCP)",
+        "settings.section.blender": "Appli creative (connexion TCP)",
         "settings.section.behaviour": "Comportement",
         "settings.section.appearance": "Apparence",
         "settings.endpoint": "Endpoint",
@@ -516,11 +611,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.keepalive": "Keep-alive",
         "settings.keepalive.tooltip": "Durée pendant laquelle Ollama garde le modèle chargé après une requête (ex. 5m, 1h, -1 pour toujours)",
         "settings.host": "Hôte",
-        "settings.host.tooltip": "Généralement 127.0.0.1 si Blender tourne sur la même machine",
+        "settings.host.tooltip": "Généralement 127.0.0.1 si l'appli créative tourne sur la même machine",
         "settings.port": "Port",
-        "settings.port.tooltip": "L'addon utilise 9876 par défaut",
+        "settings.port.tooltip": "Défaut : 9876 (Blender). FreeCAD 9877, GIMP 9878, Inkscape 9879, Photoshop 9880",
         "settings.btn.test_connection": "Tester la connexion",
-        "settings.btn.test_connection.tooltip": "Envoie un ping à l'addon Blender",
+        "settings.btn.test_connection.tooltip": "Envoie un ping à l'addon de l'appli cible",
         "settings.persist": "Conserver l'historique entre les sessions",
         "settings.persist.tooltip": "Stocké dans ~/.unification/history.json",
         "settings.route": "Routage automatique du system prompt (lecture / création)",
@@ -529,12 +624,20 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings.updates.tooltip": "Notifie si une nouvelle version d'UNIFICATION est disponible",
         "settings.max_history": "Tokens d'historique max",
         "settings.max_history.tooltip": "Les anciens messages sont droppés au-delà de ce budget",
+        "settings.scene_ctx": "Injecter le contexte de la scène (Blender uniquement)",
+        "settings.scene_ctx.tooltip": "Envoyer la liste des objets de la scène au modèle avant chaque prompt",
         "settings.max_fix": "Tentatives auto-correction",
         "settings.max_fix.tooltip": "Nombre maximal de cycles automatiques de correction par turn",
+        "settings.num_ctx": "Fenêtre de contexte (num_ctx)",
+        "settings.num_ctx.tooltip": "Taille du contexte envoyé à Ollama — augmenter pour les gros prompts, réduire pour économiser la VRAM",
         "settings.theme": "Thème",
         "settings.language": "Langue",
         "settings.language.tooltip": "Certains libellés ne se rafraîchissent qu'au redémarrage",
         "settings.btn.save": "Enregistrer",
+        "settings.provider.api_key": "Clé API {provider}",
+        "settings.provider.model": "Modèle {provider}",
+        "dialog.export_title": "Exporter la conversation",
+        "dialog.attach_title": "Joindre une image",
 
         # --- logs view
         "logs.title": "Journal",
@@ -548,10 +651,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "about.body": (
             "Vibe codez vos modeles 3D, images et plus encore\n"
             "Blender · FreeCAD · GIMP · Inkscape · Photoshop\n\n"
-            "100 % local — sans Anthropic, sans OpenAI, sans clé d'API.\n\n"
-            "Pipeline :  prompt en langage naturel  →  Ollama  →  "
+            "Local d'abord avec Ollama — connecte\n"
+            "Claude, OpenAI ou Gemini via clé d'API.\n\n"
+            "Pipeline :  prompt en langage naturel  →  LLM  →  "
             "script Python  →  addon TCP MCP.\n\n"
-            "Modèle recommandé :  qwen2.5:32b"
+            "Modèle local recommandé :  qwen2.5:32b"
         ),
         "about.shortcuts.title": "Raccourcis clavier",
         "shortcut.send": "Envoyer le prompt",
@@ -597,13 +701,87 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- token budget
         "chat.token_budget.tooltip": "Tokens utilisés / budget — les anciens turns sont coupés automatiquement",
 
-        # --- empty state suggestion chips (sculpting-focused, in French)
-        "suggest.sculpt_suzanne": "Ajoute Suzanne, applique un modificateur Multires (3 subdivisions), puis bascule en mode Sculpt prêt pour le brush Grab",
-        "suggest.sculpt_dyntopo": "Crée une icosphère, active Dyntopo (détail 2,0) et entre en mode Sculpt",
-        "suggest.sculpt_voxel_remesh": "Voxel-remesh l'objet actif à 0,05, puis entre en mode Sculpt pour le détaillage",
-        "suggest.sculpt_mirror_multires": "Ajoute un modificateur Mirror (axe X) et un Multires (niveau 4) à l'objet actif pour un sculpting symétrique",
-        "suggest.sculpt_shape_keys": "Crée trois shape keys sur l'objet actif — smile, frown, surprise — toutes à la valeur 0 pour l'instant",
-        "suggest.sculpt_decimate": "Décime le sculpt actif à 25 % de polygones et applique, prêt pour le baking de retopologie",
+        # --- empty state suggestion chips — 12 par appli créative
+        # Blender
+        "suggest.blender.1": "Ajoute un donut métallique avec des vermicelles colorés par-dessus",
+        "suggest.blender.2": "Crée un paysage low-poly avec des montagnes, des sapins et un lac",
+        "suggest.blender.3": "Anime une balle en caoutchouc qui rebondit avec squash & stretch sur 60 frames",
+        "suggest.blender.4": "Installe un éclairage studio 3 points (key, fill, rim) autour de l'objet actif",
+        "suggest.blender.5": "Crée une bouteille en verre avec un matériau réfractif et caustiques",
+        "suggest.blender.6": "Ajoute un système de particules qui émet des étincelles vers le haut depuis l'objet sélectionné",
+        "suggest.blender.7": "Construis un escalier en colimaçon avec un Array modifier sur une courbe",
+        "suggest.blender.8": "Sculpte Suzanne avec un modificateur Multires (3 subdivisions) prêt pour le brush Grab",
+        "suggest.blender.9": "Crée un mur de briques procédural avec les geometry nodes",
+        "suggest.blender.10": "Mets en place une caméra turntable qui orbite 360° autour de l'origine en 120 frames",
+        "suggest.blender.11": "Simule des dominos qui tombent en chaîne avec la physique rigid body",
+        "suggest.blender.12": "Crée une surface d'océan avec texture d'écume et un ciel HDRI en fond",
+        # FreeCAD
+        "suggest.freecad.1": "Crée un engrenage droit paramétrique à 24 dents, module 2",
+        "suggest.freecad.2": "Dessine une bride circulaire avec 6 trous de boulons répartis uniformément",
+        "suggest.freecad.3": "Construis une équerre en L avec des congés de 3 mm sur les arêtes intérieures",
+        "suggest.freecad.4": "Modélise un coude de tuyau à 90° avec un rayon intérieur de 20 mm et une épaisseur de 3 mm",
+        "suggest.freecad.5": "Conçois un écrou hexagonal M10 (surplats 17 mm, hauteur 8 mm)",
+        "suggest.freecad.6": "Crée un support de téléphone avec un angle de dossier à 60° et une fente pour le câble",
+        "suggest.freecad.7": "Construis une boîte à joints en doigt pour du contreplaqué 3 mm découpé au laser",
+        "suggest.freecad.8": "Modélise un palier avec chanfreins, congés et trous de fixation",
+        "suggest.freecad.9": "Crée un ressort de compression hélicoïdal (fil Ø 2 mm, 8 spires, ØE 20 mm)",
+        "suggest.freecad.10": "Conçois un arbre étagé à trois diamètres avec une rainure de clavette",
+        "suggest.freecad.11": "Fais une coupe booléenne d'une poche rectangulaire dans la face supérieure d'un bloc",
+        "suggest.freecad.12": "Modélise un profilé à rainure en T (20×20 mm) pour cadre aluminium",
+        # GIMP
+        "suggest.gimp.1": "Crée un fond dégradé 1920×1080 du bleu profond au violet",
+        "suggest.gimp.2": "Applique un effet sépia vintage à l'image actuelle",
+        "suggest.gimp.3": "Ajoute une ombre portée au calque actif (décalage 5 px, flou 10 px)",
+        "suggest.gimp.4": "Crée un vignettage circulaire : assombris les bords de la photo",
+        "suggest.gimp.5": "Accentue la netteté avec un masque flou (quantité 80, rayon 3)",
+        "suggest.gimp.6": "Ajoute un calque texte avec 'UNIFICATION' en blanc, 72 px, centré",
+        "suggest.gimp.7": "Sépare l'image en canaux R, V, B comme calques distincts en niveaux de gris",
+        "suggest.gimp.8": "Redimensionne le canevas en carré 1:1 et centre le contenu existant",
+        "suggest.gimp.9": "Applique un flou gaussien (rayon 12) partout sauf au centre de l'image",
+        "suggest.gimp.10": "Dessine un cadre rouge de 4 px autour de l'image sur un nouveau calque",
+        "suggest.gimp.11": "Crée un effet bichromie : ombres en bleu sarcelle foncé, hautes lumières en crème",
+        "suggest.gimp.12": "Génère un motif de bruit tileable (512×512) utilisable comme texture",
+        # Inkscape
+        "suggest.inkscape.1": "Dessine une étoile à 5 branches remplie d'un dégradé or à orange",
+        "suggest.inkscape.2": "Crée un logo : un cercle avec la lettre « U » centrée à l'intérieur",
+        "suggest.inkscape.3": "Construis une bande de palette — 7 rectangles aux couleurs de l'arc-en-ciel",
+        "suggest.inkscape.4": "Dessine un organigramme simple : 3 boîtes reliées par des flèches",
+        "suggest.inkscape.5": "Crée un chemin sinusoïdal traversant toute la largeur de la page",
+        "suggest.inkscape.6": "Conçois une icône : carré arrondi avec un éclair à l'intérieur",
+        "suggest.inkscape.7": "Dessine un damier 8×8 de cases alternées noir et blanc",
+        "suggest.inkscape.8": "Crée un badge circulaire avec le texte « PREMIUM » sur un chemin courbe",
+        "suggest.inkscape.9": "Construis un diagramme à barres avec 5 barres de hauteurs et couleurs différentes",
+        "suggest.inkscape.10": "Dessine un arbre fractal avec des branches récursives",
+        "suggest.inkscape.11": "Crée un mandala géométrique avec une symétrie rotationnelle d'ordre 12",
+        "suggest.inkscape.12": "Conçois une carte de visite (85×55 mm) avec texte et zone logo",
+        # Photoshop
+        "suggest.photoshop.1": "Crée un canevas 4K (3840×2160) avec un dégradé radial sombre vers bleu nuit",
+        "suggest.photoshop.2": "Applique un flou de mouvement à 45° et 20 px sur le calque actif",
+        "suggest.photoshop.3": "Ajoute un calque de réglage Courbes pour renforcer le contraste des tons moyens",
+        "suggest.photoshop.4": "Crée un masque de calque circulaire qui ne révèle que le centre de l'image",
+        "suggest.photoshop.5": "Duplique le calque, désature la copie, et passe le mode de fusion en Incrustation",
+        "suggest.photoshop.6": "Ajoute des effets Lueur interne et Biseautage/Estampage au calque actif",
+        "suggest.photoshop.7": "Redimensionne l'image à 1920 px de large en conservant les proportions et accentue pour le web",
+        "suggest.photoshop.8": "Ajoute un calque texte avec ombre portée et lueur externe",
+        "suggest.photoshop.9": "Applique un filtre Passe-haut (rayon 5) sur un duplicata pour l'accentuation des détails",
+        "suggest.photoshop.10": "Crée un collage photo 2×2 sur un nouveau canevas 4K",
+        "suggest.photoshop.11": "Ajoute un calque de réglage Correspondance de couleur pour un rendu cinéma orange-sarcelle",
+        "suggest.photoshop.12": "Crée un effet texte néon lumineux avec lueur externe sur fond noir",
+
+        # --- prompt system badges
+        "prompt.mode.creator": "créateur",
+        "prompt.mode.query": "requête",
+        "prompt.mode.fix": "fix #{n}",
+        "cat.materials": "matériaux",
+        "cat.lighting": "éclairage",
+        "cat.physics": "physique",
+        "cat.particles": "particules",
+        "cat.sculpting": "sculpture",
+        "cat.rendering": "rendu",
+        "cat.geometry_nodes": "géo-nodes",
+        "cat.modeling": "modélisation",
+        "cat.animation": "animation",
+        "cat.import_export": "import/export",
     },
 }
 

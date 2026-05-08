@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover
     _PY_LEXER = None  # type: ignore[assignment]
 
 from . import theme as T
+from core.i18n import t
 
 
 # Pygments token name → colour. Walks the parent chain when no exact match exists.
@@ -137,9 +138,11 @@ class StatusPill(ctk.CTkFrame):
         self.dot.pack(side="left", padx=(10, 4), pady=4)
         self.label = ctk.CTkLabel(self, text=label, text_color=T.INK_MUTED, font=(T.FONT_FAMILY, 13))
         self.label.pack(side="left", padx=(0, 12), pady=4)
+        self.state: str = "idle"
 
     def set_state(self, state: str, label: str | None = None) -> None:
         """state ∈ {'ok', 'warn', 'err', 'idle'}"""
+        self.state = state
         color = {"ok": T.OK, "warn": T.WARN, "err": T.ERR, "idle": T.INK_DIM}.get(state, T.INK_DIM)
         self.dot.configure(text_color=color)
         if label is not None:
@@ -212,7 +215,7 @@ class CodeView(ctk.CTkFrame):
 
         self.copy_btn = ctk.CTkButton(
             header,
-            text="Copy",
+            text=t("code.copy"),
             width=72,
             height=26,
             fg_color="transparent",
@@ -321,24 +324,24 @@ class CodeView(ctk.CTkFrame):
 
     @staticmethod
     def _tag_for(tok_type) -> str | None:
-        t = tok_type
-        while t is not None:
-            name = str(t)
+        tok = tok_type
+        while tok is not None:
+            name = str(tok)
             if name in _TOKEN_COLOURS:
                 return name
-            t = getattr(t, "parent", None)
+            tok = getattr(tok, "parent", None)
         return None
 
     def _update_lines(self) -> None:
         n = int(self.text.index("end-1c").split(".")[0])
-        self._line_count.configure(text=f"{n} line{'s' if n != 1 else ''}")
+        self._line_count.configure(text=t("code.lines", n=n) if n != 1 else t("code.line", n=n))
 
     def _copy(self) -> None:
         try:
             self.clipboard_clear()
             self.clipboard_append(self.get_code())
-            self.copy_btn.configure(text="Copied")
-            self.after(1100, lambda: self.copy_btn.configure(text="Copy"))
+            self.copy_btn.configure(text=t("code.copied"))
+            self.after(1100, lambda: self.copy_btn.configure(text=t("code.copy")))
         except tk.TclError:
             pass
 

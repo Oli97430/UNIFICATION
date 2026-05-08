@@ -23,7 +23,7 @@ class ChatTurn(ctk.CTkFrame):
         2. .start_streaming()       — opens the response panel + spinner
         3. .append_response(token)  — model tokens arrive
         4. .finish_response(...)    — extract & show editable code, enable Run
-        5. .set_blender_result(...) — outcome from Blender
+        5. .set_exec_result(...)    — outcome from the target creative app
     """
 
     DOT_FRAMES = ["●", "•", "·", "•"]
@@ -49,8 +49,8 @@ class ChatTurn(ctk.CTkFrame):
         self.image_b64 = image_b64
         self.code: str = ""
         self.full_response: str = ""
-        self.blender_status: str = ""
-        self.blender_payload: dict = {}
+        self.exec_status: str = ""
+        self.exec_payload: dict = {}
         self._streaming = False
         self._dot_step = 0
         self._dot_after_id: str | None = None
@@ -212,7 +212,7 @@ class ChatTurn(ctk.CTkFrame):
         )
         self.stats_label.pack(side="right")
 
-        # Result panel (hidden until Blender returns)
+        # Result panel (hidden until the creative app returns)
         self.result_frame = ctk.CTkFrame(self.card, fg_color="transparent")
         self.result_status = ctk.CTkLabel(
             self.result_frame, text="", text_color=T.INK_MUTED, font=(T.FONT_FAMILY, 13)
@@ -257,9 +257,19 @@ class ChatTurn(ctk.CTkFrame):
             except Exception:
                 pass
             self._dot_after_id = None
-        self.spinner.configure(text="●")
+        if self.winfo_exists():
+            self.spinner.configure(text="●")
+
+    def _alive(self) -> bool:
+        """Return False if this widget has been destroyed (avoids TclError)."""
+        try:
+            return self.winfo_exists()
+        except Exception:
+            return False
 
     def append_response(self, token: str) -> None:
+        if not self._alive():
+            return
         self.stream_box.configure(state="normal")
         self.stream_box.insert("end", token)
         self.stream_box.see("end")
@@ -270,6 +280,8 @@ class ChatTurn(ctk.CTkFrame):
         self.code = code
         self._stats = stats or self._stats
         self._stop_dot()
+        if not self._alive():
+            return
         self.stop_btn.pack_forget()
 
         if stats and stats.aborted:
@@ -295,6 +307,8 @@ class ChatTurn(ctk.CTkFrame):
 
     def set_error(self, message: str) -> None:
         self._stop_dot()
+        if not self._alive():
+            return
         self.stop_btn.pack_forget()
         self.status_label.configure(text=t("turn.error"), text_color=T.ERR)
         self.spinner.configure(text_color=T.ERR)
@@ -358,12 +372,98 @@ class ChatTurn(ctk.CTkFrame):
             )
             self._mode_label.pack(side="left")
 
+    def set_prompt_info(
+        self,
+        mode: str,
+        categories: list[str] | None = None,
+        fix_attempt: int = 0,
+    ) -> None:
+        """Show mode badge + detected category pills in the turn header.
+
+        Parameters
+        ----------
+        mode : str
+            "creator", "query", or "fix"
+        categories : list[str] | None
+            Detected Blender categories (e.g. ["materials", "lighting"]).
+        fix_attempt : int
+            1-based auto-fix counter.  0 = normal mode.
+        """
+        # --- Clear previous info widgets ---
+        if hasattr(self, "_prompt_info_widgets"):
+            for w in self._prompt_info_widgets:
+                try:
+                    w.destroy()
+                except Exception:
+                    pass
+        self._prompt_info_widgets: list[ctk.CTkFrame | ctk.CTkLabel] = []
+
+        # --- Mode badge ---
+        if fix_attempt > 0:
+            mode_text = t("prompt.mode.fix", n=fix_attempt)
+            mode_color = T.WARN
+        elif mode == "query":
+            mode_text = t("prompt.mode.query")
+            mode_color = "#60a5fa"  # soft blue
+        else:
+            mode_text = t("prompt.mode.creator")
+            mode_color = T.ACCENT
+
+        mode_badge = ctk.CTkFrame(
+            self._head_frame,
+            fg_color=mode_color,
+            corner_radius=6,
+            height=20,
+        )
+        mode_badge.pack(side="left", padx=(8, 0))
+        mode_lbl = ctk.CTkLabel(
+            mode_badge,
+            text=f" {mode_text} ",
+            text_color="#1a1a1a",
+            font=(T.FONT_MONO, 10, "bold"),
+            height=18,
+        )
+        mode_lbl.pack(padx=2, pady=1)
+        self._prompt_info_widgets.append(mode_badge)
+
+        # --- Category pills ---
+        _CAT_COLORS: dict[str, str] = {
+            "materials":      "#9b87f5",
+            "lighting":       "#fbbf24",
+            "physics":        "#f87171",
+            "particles":      "#f472b6",
+            "sculpting":      "#a78bfa",
+            "rendering":      "#34d399",
+            "geometry_nodes": "#60a5fa",
+            "modeling":       "#fb923c",
+            "animation":      "#38bdf8",
+            "import_export":  "#94a3b8",
+        }
+        for cat in (categories or []):
+            pill_color = _CAT_COLORS.get(cat, T.INK_DIM)
+            pill = ctk.CTkFrame(
+                self._head_frame,
+                fg_color=pill_color,
+                corner_radius=6,
+                height=20,
+            )
+            pill.pack(side="left", padx=(4, 0))
+            pill_lbl = ctk.CTkLabel(
+                pill,
+                text=f" {t('cat.' + cat)} ",
+                text_color="#1a1a1a",
+                font=(T.FONT_MONO, 10),
+                height=18,
+            )
+            pill_lbl.pack(padx=2, pady=1)
+            self._prompt_info_widgets.append(pill)
+
     def _save_code(self) -> None:
         code = self.code_view.get_code()
         if not code.strip():
             return
         path = filedialog.asksaveasfilename(
-            title="Save Python script",
+            title=t("code.save_title"),
             defaultextension=".py",
             filetypes=[("Python files", "*.py"), ("All files", "*.*")],
             initialfile="unification_script.py",
@@ -372,15 +472,17 @@ class ChatTurn(ctk.CTkFrame):
             return
         Path(path).write_text(code, encoding="utf-8")
 
-    # ------------------------------------------------------------------ blender
+    # ------------------------------------------------------------------ execution
 
-    def set_blender_running(self) -> None:
+    def set_exec_running(self) -> None:
+        if not self._alive():
+            return
         self.run_btn.configure(state="disabled", text=t("turn.btn.run.running"))
         self.result_frame.pack_forget()
 
-    def set_blender_result(self, status: str, payload: dict, app_label: str = "Blender") -> None:
-        self.blender_status = status
-        self.blender_payload = payload
+    def set_exec_result(self, status: str, payload: dict, app_label: str = "Blender") -> None:
+        self.exec_status = status
+        self.exec_payload = payload
         self.run_btn.configure(state="normal", text=t("turn.btn.run"))
         color = {"ok": T.OK, "error": T.ERR, "transport_error": T.ERR}.get(status, T.WARN)
         label = {
@@ -436,12 +538,13 @@ class ChatTurn(ctk.CTkFrame):
     # ------------------------------------------------------------------ serialise
 
     def to_dict(self) -> dict:
+        # Keys kept as "blender_*" for backward compatibility with saved history.
         return {
             "ts": self._created_at,
             "prompt": self.prompt,
             "model": self.model_name,
             "response": self.full_response,
             "code": self.code_view.get_code() if self.code else "",
-            "blender_status": self.blender_status,
-            "blender_payload": self.blender_payload,
+            "blender_status": self.exec_status,
+            "blender_payload": self.exec_payload,
         }

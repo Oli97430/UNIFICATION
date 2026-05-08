@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import queue
+import random
 import re
+import socket
 import threading
 import time
 import tkinter as tk
@@ -24,9 +27,11 @@ from core import (
     CREATIVE_APPS,
     LANGUAGE_LABELS,
     OllamaClient,
+    PROVIDER_LABELS,
     Settings,
     StreamStats,
-    SYSTEM_PROMPT,
+    create_provider,
+    detect_categories,
     is_query_intent,
     UpdateInfo,
     available_languages,
@@ -90,6 +95,7 @@ class UnificationApp(ctk.CTk):
         self._set_window_icon()
 
         self.ollama = OllamaClient(self.settings.ollama_url)
+        self.llm = self._build_provider()
         self.blender = BlenderClient(self.settings.blender_host, self.settings.blender_port)
 
         self._views: dict[str, ctk.CTkFrame] = {}
@@ -105,9 +111,9 @@ class UnificationApp(ctk.CTk):
         self._attached_image_b64: str | None = None
         self._attached_image_thumb: ctk.CTkImage | None = None
         self._scroll_scheduled: bool = False
-        self._target_app: str = "blender"  # current execution target: blender|freecad|gimp
-        self._blender_queue: queue.Queue[tuple[ChatTurn, str]] = queue.Queue()
-        threading.Thread(target=self._blender_queue_worker, daemon=True).start()
+        self._target_app: str = "blender"  # current execution target: blender|freecad|gimp|…
+        self._exec_queue: queue.Queue[tuple[ChatTurn, str, str]] = queue.Queue()
+        threading.Thread(target=self._exec_queue_worker, daemon=True).start()
 
         self._build_layout()
         self.show_view("chat")
@@ -388,14 +394,14 @@ class UnificationApp(ctk.CTk):
         ).pack(side="left", padx=(16, 0))
 
         self.export_btn = IconButton(
-            ctrl, text="Export", command=self._export_conversation,
-            tooltip="Save the whole conversation as JSON", width=84,
+            ctrl, text=t("chat.btn.export"), command=self._export_conversation,
+            tooltip=t("chat.btn.export.tooltip"), width=84,
         )
         self.export_btn.pack(side="right", padx=(8, 0))
 
         self.clear_btn = IconButton(
-            ctrl, text="Clear", command=self._clear_chat,
-            tooltip="Clear all turns  (Ctrl+L)", width=82,
+            ctrl, text=t("chat.btn.clear"), command=self._clear_chat,
+            tooltip=t("chat.btn.clear.tooltip"), width=82,
         )
         self.clear_btn.pack(side="right", padx=(8, 0))
 
@@ -433,11 +439,20 @@ class UnificationApp(ctk.CTk):
             tooltip="Remove this attachment", width=110,
         ).pack(side="right", padx=(0, 14), pady=(0, 8))
 
+    # Suggestion chips — app key → (display label, number of suggestions, accent colour)
+    _SUGGEST_APPS = [
+        ("blender",    "Blender",    12, "#E87D0D"),
+        ("freecad",    "FreeCAD",    12, "#D94C4C"),
+        ("gimp",       "GIMP",       12, "#8C8C00"),
+        ("inkscape",   "Inkscape",   12, "#3F72AF"),
+        ("photoshop",  "Photoshop",  12, "#31A8FF"),
+    ]
+
     def _build_empty_state(self) -> None:
         self.empty_state = ctk.CTkFrame(self.history_frame, fg_color="transparent")
-        self.empty_state.pack(fill="x", pady=80)
+        self.empty_state.pack(fill="x", pady=(50, 20))
 
-        big = self._ctk_image(ASSETS / "logo.png", (120, 120))
+        big = self._ctk_image(ASSETS / "logo.png", (200, 200))
         if big:
             ctk.CTkLabel(self.empty_state, image=big, text="").pack()
 
@@ -446,7 +461,7 @@ class UnificationApp(ctk.CTk):
             text="UNIFICATION",
             text_color=T.INK,
             font=(T.FONT_FAMILY, 26, "bold"),
-        ).pack(pady=(14, 4))
+        ).pack(pady=(10, 4))
 
         ctk.CTkLabel(
             self.empty_state,
@@ -454,7 +469,44 @@ class UnificationApp(ctk.CTk):
             text_color=T.INK_MUTED,
             font=(T.FONT_FAMILY, 14),
             justify="center",
-        ).pack()
+        ).pack(pady=(0, 18))
+
+        # Suggestion chips — 4 random examples per creative app, 2-column grid
+        for app_key, app_label, total, accent in self._SUGGEST_APPS:
+            # App section header
+            ctk.CTkLabel(
+                self.empty_state, text=f"  {app_label}", text_color=accent,
+                font=(T.FONT_FAMILY, 13, "bold"),
+            ).pack(anchor="w", padx=40, pady=(10, 0))
+
+            # Pick 4 random suggestions from the 12 available
+            indices = list(range(1, total + 1))
+            random.shuffle(indices)
+            picked = indices[:4]
+
+            grid = ctk.CTkFrame(self.empty_state, fg_color="transparent")
+            grid.pack(fill="x", padx=40, pady=(2, 0))
+            grid.grid_columnconfigure(0, weight=1)
+            grid.grid_columnconfigure(1, weight=1)
+            for i, idx in enumerate(picked):
+                chip_text = t(f"suggest.{app_key}.{idx}")
+                if chip_text.startswith("suggest."):
+                    continue  # key missing — skip
+                btn = ctk.CTkButton(
+                    grid,
+                    text=chip_text,
+                    fg_color="transparent",
+                    hover_color=T.BG_RAISED,
+                    text_color=T.INK_MUTED,
+                    border_width=1,
+                    border_color=T.EDGE,
+                    anchor="w",
+                    font=(T.FONT_FAMILY, 12),
+                    height=36,
+                    corner_radius=T.R_SM,
+                    command=lambda s=chip_text: self._insert_prompt(s),
+                )
+                btn.grid(row=i // 2, column=i % 2, padx=3, pady=2, sticky="ew")
 
 
     def _insert_prompt(self, text: str) -> None:
@@ -497,10 +549,12 @@ class UnificationApp(ctk.CTk):
         return "break"
 
     def _submit_prompt(self, text: str, replay: bool = False, *, image_b64: str | None = None,
-                        is_auto_fix: bool = False, fix_attempt: int = 0) -> None:
+                        is_auto_fix: bool = False, fix_attempt: int = 0,
+                        error_context: str | None = None,
+                        previous_code: str | None = None) -> None:
         self.send_btn.configure(state="disabled", text="…")
 
-        display_prompt = text if not is_auto_fix else f"(auto-fix attempt {fix_attempt})"
+        display_prompt = text if not is_auto_fix else t("turn.fix.attempt", n=fix_attempt)
 
         turn = ChatTurn(
             self.history_frame,
@@ -531,6 +585,8 @@ class UnificationApp(ctk.CTk):
         threading.Thread(
             target=self._stream_into_turn,
             args=(turn, stop_event, stats, text),
+            kwargs={"fix_attempt": fix_attempt, "error_context": error_context,
+                    "previous_code": previous_code},
             daemon=True,
         ).start()
 
@@ -540,44 +596,70 @@ class UnificationApp(ctk.CTk):
         stop_event: threading.Event,
         stats: StreamStats,
         user_msg: str,
+        *,
+        fix_attempt: int = 0,
+        error_context: str | None = None,
+        previous_code: str | None = None,
     ) -> None:
         full: list[str] = []
-        # Detect target creative app based on user message + online status
-        self._target_app = self._detect_target_app(user_msg)
-        target_label = self._target_label(self._target_app)
-        # Update run button text to reflect target app
-        self.after(0, lambda: turn.run_btn.configure(
-            text=f"▶  {t('turn.btn.run.prefix')} {target_label}"))
-
-        # Pick the appropriate system prompt (creator vs query, per app)
-        sys_prompt = pick_system_prompt(user_msg, self._target_app) if self.settings.auto_route_prompt else pick_system_prompt(user_msg, self._target_app)
-        prompt_mode = "query" if (self.settings.auto_route_prompt and is_query_intent(user_msg)) else "creator"
-        self.after(0, lambda m=prompt_mode: turn.set_prompt_mode(m))
-
-        # Inject scene context (Blender only — other apps don't have bpy)
-        if self.settings.inject_scene_context and self._target_app == "blender":
-            try:
-                scene_result = self.blender.execute(
-                    "result = [o.name + ' (' + o.type + ')' for o in __import__('bpy').data.objects]",
-                    timeout=3.0,
-                )
-                if scene_result.ok and scene_result.result:
-                    sys_prompt += f"\n\nCURRENT SCENE OBJECTS: {scene_result.result}"
-            except Exception:
-                pass
-
-        # Trim history down to the configured token budget
-        kept, dropped = trim_history(
-            self._convo_history,
-            max_tokens=max(1024, self.settings.max_history_tokens),
-            keep_last=6,
-        )
-        if dropped:
-            self._log(f"history trimmed: dropped {len(dropped)} message(s) for budget")
-        messages: list[dict[str, Any]] = [{"role": "system", "content": sys_prompt}, *kept]
         try:
-            for token in self.ollama.chat_stream(
-                model=self.settings.ollama_model,
+            # Detect target creative app based on user message + online status
+            self._target_app = self._detect_target_app(user_msg)
+            target_label = self._target_label(self._target_app)
+            # Update run button text to reflect target app
+            self.after(0, lambda: turn.run_btn.configure(
+                text=f"▶  {t('turn.btn.run.prefix')} {target_label}"))
+
+            # Pick the appropriate system prompt (creator vs query, per app).
+            # When auto-route is off, pass empty msg to skip query detection → always creator.
+            _prompt_msg = user_msg if self.settings.auto_route_prompt else ""
+            sys_prompt = pick_system_prompt(
+                _prompt_msg,
+                self._target_app,
+                provider=self.settings.llm_provider,
+                error_context=error_context,
+                previous_code=previous_code,
+                fix_attempt=fix_attempt,
+            )
+            prompt_mode = "query" if (self.settings.auto_route_prompt and is_query_intent(user_msg)) else "creator"
+            cats = detect_categories(user_msg) if self._target_app == "blender" else []
+            self.after(
+                0,
+                lambda m=prompt_mode, c=cats, fa=fix_attempt: turn.set_prompt_info(m, c, fa),
+            )
+
+            # Inject scene context (Blender only — other apps don't have bpy)
+            if self.settings.inject_scene_context and self._target_app == "blender":
+                try:
+                    scene_result = self.blender.execute(
+                        "result = [o.name + ' (' + o.type + ')' for o in __import__('bpy').data.objects]",
+                        timeout=3.0,
+                    )
+                    if scene_result.ok and scene_result.result:
+                        sys_prompt += f"\n\nCURRENT SCENE OBJECTS: {scene_result.result}"
+                except Exception:
+                    pass
+
+            # Trim history down to the configured token budget
+            kept, dropped = trim_history(
+                self._convo_history,
+                max_tokens=max(1024, self.settings.max_history_tokens),
+                keep_last=6,
+            )
+            if dropped:
+                self._log(f"history trimmed: dropped {len(dropped)} message(s) for budget")
+            messages: list[dict[str, Any]] = [{"role": "system", "content": sys_prompt}, *kept]
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            self.after(0, turn.set_error, f"Setup error: {exc}")
+            self.after(0, lambda: self.send_btn.configure(state="normal", text=t("chat.btn.send")))
+            self.after(0, self._mark_idle)
+            return
+        try:
+            active_model = self._active_model()
+            for token in self.llm.chat_stream(
+                model=active_model,
                 messages=messages,
                 temperature=self.settings.temperature,
                 keep_alive=self.settings.keep_alive,
@@ -589,9 +671,9 @@ class UnificationApp(ctk.CTk):
                 self.after(0, turn.append_response, token)
                 self.after(0, self._scroll_to_bottom_smooth)
         except Exception as exc:
-            self.after(0, turn.set_error, f"Ollama error: {exc}")
+            self.after(0, turn.set_error, f"LLM error: {exc}")
             self.after(0, lambda: self.send_btn.configure(state="normal", text=t("chat.btn.send")))
-            self.after(0, lambda: self._log(f"ollama error: {exc}"))
+            self.after(0, lambda: self._log(f"llm error: {exc}"))
             self.after(0, self._mark_idle)
             return
 
@@ -633,21 +715,21 @@ class UnificationApp(ctk.CTk):
         code = turn.code_view.get_code() if turn.code else ""
         if not code.strip():
             return
-        turn.set_blender_running()
-        self._blender_queue.put((turn, code))
+        turn.set_exec_running()
+        self._exec_queue.put((turn, code, self._target_app))
 
-    def _blender_queue_worker(self) -> None:
+    def _exec_queue_worker(self) -> None:
         """Serialize creative-app executions so concurrent Run clicks don't race."""
         while True:
-            turn, code = self._blender_queue.get()
+            turn, code, target_app = self._exec_queue.get()
             try:
-                if self._target_app in ("freecad", "gimp", "inkscape", "photoshop"):
-                    self._exec_in_app_generic(turn, code, self._target_app)
+                if target_app in ("freecad", "gimp", "inkscape", "photoshop"):
+                    self._exec_in_app_generic(turn, code, target_app)
                 else:
                     self._exec_in_blender(turn, code)
             except Exception:
                 pass
-            self._blender_queue.task_done()
+            self._exec_queue.task_done()
 
     def _exec_in_blender(self, turn: ChatTurn, code: str) -> None:
         # Pre-flight lint — catch syntax errors before paying a Blender round-trip
@@ -659,9 +741,9 @@ class UnificationApp(ctk.CTk):
         if errors:
             msg = "Syntax check failed:\n" + "\n".join(i.format() for i in errors)
             payload = {"result": None, "stdout": "", "message": msg}
-            self.after(0, turn.set_blender_result, "error", payload, "Blender")
+            self.after(0, turn.set_exec_result, "error", payload, "Blender")
             self.after(0, lambda: self._log(f"lint failure: {msg}"))
-            self.after(0, lambda: self._maybe_auto_fix(turn, msg))
+            self.after(0, lambda: self._maybe_auto_fix(turn, msg, "Blender"))
             return
         result = self.blender.execute(
             code,
@@ -669,14 +751,14 @@ class UnificationApp(ctk.CTk):
             with_render=bool(self.render_var.get()) if hasattr(self, "render_var") else False,
         )
         payload = {"result": result.result, "stdout": result.stdout, "message": result.message}
-        self.after(0, turn.set_blender_result, result.status, payload, "Blender")
+        self.after(0, turn.set_exec_result, result.status, payload, "Blender")
         self.after(0, self._refresh_blender_status)
         self.after(0, lambda: self._log(f"blender: {result.status}"))
         self.after(0, self._save_history_async)
         if result.status in ("error", "transport_error") and result.message:
-            self.after(0, lambda: self._maybe_auto_fix(turn, result.message))
+            self.after(0, lambda: self._maybe_auto_fix(turn, result.message, "Blender"))
 
-    def _maybe_auto_fix(self, turn: ChatTurn, error_text: str) -> None:
+    def _maybe_auto_fix(self, turn: ChatTurn, error_text: str, app_label: str = "Blender") -> None:
         """Spawn an auto-fix turn that asks the model to repair the failing code."""
         if not self.auto_fix_var.get():
             return
@@ -685,18 +767,23 @@ class UnificationApp(ctk.CTk):
             self._log(f"auto-fix budget exhausted ({attempts}/{self.settings.max_fix_attempts})")
             return
         last_code = turn.code_view.get_code() if turn.code else ""
-        # Trim very long tracebacks to keep the prompt focused
         snippet = error_text.strip()
         if len(snippet) > 1500:
             snippet = snippet[-1500:]
+        # User message for the conversation history (short)
         text = (
-            "The Python code you produced raised an error when executed in Blender. "
-            "Read the traceback below carefully and reply with a CORRECTED full script "
-            "(one ```python``` block, no prose). Keep the original intent.\n\n"
-            f"--- previous code ---\n{last_code}\n\n"
-            f"--- traceback ---\n{snippet}"
+            f"Fix the error from {app_label}. "
+            "Reply with the CORRECTED full script (one ```python``` block, no prose).\n\n"
+            f"Error: {snippet[:300]}"
         )
-        self._submit_prompt(text, is_auto_fix=True, fix_attempt=attempts + 1)
+        # Pass full error context + code to the system prompt builder
+        self._submit_prompt(
+            text,
+            is_auto_fix=True,
+            fix_attempt=attempts + 1,
+            error_context=snippet,
+            previous_code=last_code,
+        )
 
     def _on_retry_turn(self, turn: ChatTurn) -> None:
         idx = self._chat_turns.index(turn)
@@ -727,20 +814,20 @@ class UnificationApp(ctk.CTk):
         """Remove a single turn from the conversation."""
         if turn in self._chat_turns:
             idx = self._chat_turns.index(turn)
-            # Remove matching history entries (user + assistant)
             prompt = turn.prompt
-            found_user = False
+            # Walk backwards: find the user msg, then remove it + the
+            # assistant message that immediately follows it (if any).
+            to_remove: list[int] = []
             for i in range(len(self._convo_history) - 1, -1, -1):
                 entry = self._convo_history[i]
-                if not found_user and entry["role"] == "assistant":
-                    self._convo_history.pop(i)
-                    continue
                 if entry["role"] == "user" and entry["content"] == prompt:
-                    self._convo_history.pop(i)
-                    found_user = True
+                    to_remove.append(i)
+                    # Also remove the assistant reply right after it
+                    if i + 1 < len(self._convo_history) and self._convo_history[i + 1]["role"] == "assistant":
+                        to_remove.append(i + 1)
                     break
-                if found_user:
-                    break
+            for i in sorted(to_remove, reverse=True):
+                self._convo_history.pop(i)
             self._chat_turns.pop(idx)
             turn.destroy()
             self._save_history_async()
@@ -759,7 +846,8 @@ class UnificationApp(ctk.CTk):
                 text=t("dialog.clear_confirm"),
                 title=t("dialog.clear_title"),
             )
-            if not dialog.get_input():
+            answer = (dialog.get_input() or "").strip().lower()
+            if answer not in ("ok", "oui", "yes", "y"):
                 return
         if self._stop_event:
             self._stop_event.set()
@@ -800,14 +888,14 @@ class UnificationApp(ctk.CTk):
             Toast(self, t("toast.nothing_to_export"), kind="warn")
             return
         path = filedialog.asksaveasfilename(
-            title="Export conversation",
+            title=t("dialog.export_title"),
             defaultextension=".json",
             initialfile=f"unification_{datetime.now():%Y%m%d_%H%M%S}.json",
             filetypes=[("JSON", "*.json"), ("All files", "*.*")],
         )
         if not path:
             return
-        save_history([t.to_dict() for t in self._chat_turns], Path(path))
+        save_history([turn.to_dict() for turn in self._chat_turns], Path(path))
         Toast(self, t("toast.exported"), kind="ok")
 
     # =========================================================== setup view
@@ -1261,7 +1349,7 @@ class UnificationApp(ctk.CTk):
             d = self._selected_addon_dir()
             if d is None:
                 return
-            self.btn_install.configure(state="disabled", text="working…")
+            self.btn_install.configure(state="disabled", text=t("setup.status.installing"))
             self.addon_status_label.configure(text=t("setup.status.installing"), text_color=T.WARN)
             source = self._addon_source.get()
             threading.Thread(target=self._install_blender_worker, args=(d, source), daemon=True).start()
@@ -1269,7 +1357,7 @@ class UnificationApp(ctk.CTk):
             da = self._selected_app_addon_dir()
             if da is None:
                 return
-            self.btn_install.configure(state="disabled", text="working…")
+            self.btn_install.configure(state="disabled", text=t("setup.status.installing"))
             self.addon_status_label.configure(text=t("setup.status.installing"), text_color=T.WARN)
             threading.Thread(target=self._install_app_worker, args=(da,), daemon=True).start()
 
@@ -1456,7 +1544,21 @@ class UnificationApp(ctk.CTk):
     def _refresh_models_list(self) -> None:
         for child in self.installed_frame.winfo_children():
             child.destroy()
-        if not self.ollama.is_alive():
+        ctk.CTkLabel(
+            self.installed_frame, text="⟳", text_color=T.INK_DIM,
+            font=(T.FONT_FAMILY, 14),
+        ).pack(pady=40)
+        threading.Thread(target=self._refresh_models_list_async, daemon=True).start()
+
+    def _refresh_models_list_async(self) -> None:
+        alive = self.ollama.is_alive()
+        models = self.ollama.list_models() if alive else []
+        self.after(0, self._refresh_models_list_apply, alive, models)
+
+    def _refresh_models_list_apply(self, alive: bool, models) -> None:
+        for child in self.installed_frame.winfo_children():
+            child.destroy()
+        if not alive:
             ctk.CTkLabel(
                 self.installed_frame,
                 text=t("models.ollama_offline"),
@@ -1465,7 +1567,6 @@ class UnificationApp(ctk.CTk):
                 justify="center",
             ).pack(pady=40)
             return
-        models = self.ollama.list_models()
         self._refresh_model_combo(models)
         if not models:
             ctk.CTkLabel(
@@ -1534,7 +1635,7 @@ class UnificationApp(ctk.CTk):
 
     def _on_attach_image(self) -> None:
         path = filedialog.askopenfilename(
-            title="Attach an image",
+            title=t("dialog.attach_title"),
             filetypes=[
                 ("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.gif"),
                 ("All files", "*.*"),
@@ -1627,20 +1728,49 @@ class UnificationApp(ctk.CTk):
         scroll.grid(row=1, column=0, sticky="nsew")
         view.grid_rowconfigure(1, weight=1)
 
+        # --- LLM Provider
+        sect = self._settings_section(scroll, t("settings.section.provider"))
+        provider_keys = list(PROVIDER_LABELS.keys())
+        provider_labels = list(PROVIDER_LABELS.values())
+        current_idx = provider_keys.index(self.settings.llm_provider) if self.settings.llm_provider in provider_keys else 0
+        self.s_provider = ctk.CTkOptionMenu(
+            sect, values=provider_labels,
+            fg_color=T.BG_RAISED, button_color=T.ACCENT,
+            button_hover_color=T.ACCENT_HOVER, text_color=T.INK,
+            dropdown_fg_color=T.BG_RAISED, dropdown_text_color=T.INK,
+            dropdown_hover_color=T.ACCENT,
+            font=(T.FONT_FAMILY, 13), width=250,
+            command=self._on_provider_changed,
+        )
+        self.s_provider.set(provider_labels[current_idx])
+        self.s_provider.pack(anchor="w", padx=14, pady=(4, 8))
+
+        # API key + model fields for cloud providers
+        self._provider_frame = ctk.CTkFrame(sect, fg_color="transparent")
+        self._provider_frame.pack(fill="x", padx=0, pady=(0, 4))
+
+        self.s_claude_key = self._setting_row(self._provider_frame, t("settings.provider.api_key", provider="Claude"), self.settings.claude_api_key, show="*")
+        self.s_claude_model = self._setting_row(self._provider_frame, t("settings.provider.model", provider="Claude"), self.settings.claude_model)
+        self.s_openai_key = self._setting_row(self._provider_frame, t("settings.provider.api_key", provider="OpenAI"), self.settings.openai_api_key, show="*")
+        self.s_openai_model = self._setting_row(self._provider_frame, t("settings.provider.model", provider="OpenAI"), self.settings.openai_model)
+        self.s_gemini_key = self._setting_row(self._provider_frame, t("settings.provider.api_key", provider="Gemini"), self.settings.gemini_api_key, show="*")
+        self.s_gemini_model = self._setting_row(self._provider_frame, t("settings.provider.model", provider="Gemini"), self.settings.gemini_model)
+        self._toggle_provider_fields()
+
         # --- Ollama
         sect = self._settings_section(scroll, t("settings.section.ollama"))
-        self.s_ollama_url = self._setting_row(sect, "Endpoint", self.settings.ollama_url,
+        self.s_ollama_url = self._setting_row(sect, t("settings.endpoint"), self.settings.ollama_url,
                                               tooltip=t("settings.endpoint.tooltip"))
-        self.s_temp = self._setting_row(sect, "Temperature", str(self.settings.temperature),
+        self.s_temp = self._setting_row(sect, t("settings.temperature"), str(self.settings.temperature),
                                         tooltip=t("settings.temperature.tooltip"))
-        self.s_keepalive = self._setting_row(sect, "Keep-alive", self.settings.keep_alive,
+        self.s_keepalive = self._setting_row(sect, t("settings.keepalive"), self.settings.keep_alive,
                                              tooltip=t("settings.keepalive.tooltip"))
 
         # --- Blender
         sect = self._settings_section(scroll, t("settings.section.blender"))
-        self.s_blender_host = self._setting_row(sect, "Host", self.settings.blender_host,
+        self.s_blender_host = self._setting_row(sect, t("settings.host"), self.settings.blender_host,
                                                 tooltip=t("settings.host.tooltip"))
-        self.s_blender_port = self._setting_row(sect, "Port", str(self.settings.blender_port),
+        self.s_blender_port = self._setting_row(sect, t("settings.port"), str(self.settings.blender_port),
                                                 tooltip=t("settings.port.tooltip"))
         IconButton(
             sect, text=t("settings.btn.test_connection"), command=self._test_blender,
@@ -1681,21 +1811,21 @@ class UnificationApp(ctk.CTk):
 
         self.s_scene_ctx = ctk.BooleanVar(value=self.settings.inject_scene_context)
         chk4 = ctk.CTkCheckBox(
-            sect, text="Inject scene context",
+            sect, text=t("settings.scene_ctx"),
             variable=self.s_scene_ctx,
             text_color=T.INK_MUTED, fg_color=T.ACCENT, hover_color=T.ACCENT_HOVER,
             border_color=T.EDGE, font=(T.FONT_FAMILY, 13),
         )
         chk4.pack(anchor="w", padx=14, pady=(0, 4))
-        attach_tooltip(chk4, "Send the list of scene objects to the model before each prompt")
+        attach_tooltip(chk4, t("settings.scene_ctx.tooltip"))
 
         # Numeric: max history tokens, max fix attempts, num_ctx
-        self.s_max_hist = self._setting_row(sect, "Max history tokens", str(self.settings.max_history_tokens),
-                                            tooltip="Older messages are dropped when the conversation exceeds this budget")
-        self.s_max_fix = self._setting_row(sect, "Auto-fix attempts", str(self.settings.max_fix_attempts),
-                                            tooltip="Maximum number of automatic correction rounds per turn")
-        self.s_num_ctx = self._setting_row(sect, "Context window (num_ctx)", str(self.settings.num_ctx),
-                                            tooltip="Token context size sent to Ollama — increase for large prompts, decrease to save VRAM")
+        self.s_max_hist = self._setting_row(sect, t("settings.max_history"), str(self.settings.max_history_tokens),
+                                            tooltip=t("settings.max_history.tooltip"))
+        self.s_max_fix = self._setting_row(sect, t("settings.max_fix"), str(self.settings.max_fix_attempts),
+                                            tooltip=t("settings.max_fix.tooltip"))
+        self.s_num_ctx = self._setting_row(sect, t("settings.num_ctx"), str(self.settings.num_ctx),
+                                            tooltip=t("settings.num_ctx.tooltip"))
         ctk.CTkLabel(sect, text="").pack(pady=(0, 8))
 
         # --- Appearance
@@ -1772,7 +1902,7 @@ class UnificationApp(ctk.CTk):
         )
         return card
 
-    def _setting_row(self, parent, label: str, value: str, tooltip: str = "") -> ctk.CTkEntry:
+    def _setting_row(self, parent, label: str, value: str, tooltip: str = "", show: str = "") -> ctk.CTkEntry:
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=14, pady=4)
         lbl = ctk.CTkLabel(
@@ -1780,10 +1910,13 @@ class UnificationApp(ctk.CTk):
             font=(T.FONT_FAMILY, 13),
         )
         lbl.pack(side="left")
-        entry = ctk.CTkEntry(
-            row, fg_color=T.BG_INPUT, border_color=T.EDGE, text_color=T.INK,
+        kwargs: dict = dict(
+            fg_color=T.BG_INPUT, border_color=T.EDGE, text_color=T.INK,
             font=(T.FONT_FAMILY, 14),
         )
+        if show:
+            kwargs["show"] = show
+        entry = ctk.CTkEntry(row, **kwargs)
         entry.insert(0, value)
         entry.pack(side="left", fill="x", expand=True)
         if tooltip:
@@ -1804,8 +1937,48 @@ class UnificationApp(ctk.CTk):
         Toast(self, t("toast.language_restart"), kind="warn", duration_ms=4000)
         self._log(f"language switched to {applied}")
 
+    def _on_provider_changed(self, value: str) -> None:
+        """Update settings when provider dropdown changes."""
+        keys = list(PROVIDER_LABELS.keys())
+        labels = list(PROVIDER_LABELS.values())
+        idx = labels.index(value) if value in labels else 0
+        self.settings.llm_provider = keys[idx]
+        self._toggle_provider_fields()
+
+    def _toggle_provider_fields(self) -> None:
+        """Show/hide API key + model fields based on selected provider."""
+        p = self.settings.llm_provider
+        # Each row is packed inside _provider_frame — show/hide by pack/forget
+        claude_widgets = [self.s_claude_key, self.s_claude_model]
+        openai_widgets = [self.s_openai_key, self.s_openai_model]
+        gemini_widgets = [self.s_gemini_key, self.s_gemini_model]
+        for w in claude_widgets + openai_widgets + gemini_widgets:
+            w.master.pack_forget()
+        if p == "claude":
+            for w in claude_widgets:
+                w.master.pack(fill="x", padx=14, pady=4)
+        elif p == "openai":
+            for w in openai_widgets:
+                w.master.pack(fill="x", padx=14, pady=4)
+        elif p == "gemini":
+            for w in gemini_widgets:
+                w.master.pack(fill="x", padx=14, pady=4)
+
     def _on_save_settings_clicked(self) -> None:
         try:
+            # Provider settings
+            provider_keys = list(PROVIDER_LABELS.keys())
+            provider_labels = list(PROVIDER_LABELS.values())
+            sel = self.s_provider.get()
+            idx = provider_labels.index(sel) if sel in provider_labels else 0
+            self.settings.llm_provider = provider_keys[idx]
+            self.settings.claude_api_key = self.s_claude_key.get().strip()
+            self.settings.claude_model = self.s_claude_model.get().strip() or "claude-sonnet-4-20250514"
+            self.settings.openai_api_key = self.s_openai_key.get().strip()
+            self.settings.openai_model = self.s_openai_model.get().strip() or "gpt-4o"
+            self.settings.gemini_api_key = self.s_gemini_key.get().strip()
+            self.settings.gemini_model = self.s_gemini_model.get().strip() or "gemini-2.5-flash"
+
             self.settings.ollama_url = self.s_ollama_url.get().strip()
             self.settings.temperature = float(self.s_temp.get().strip() or 0.2)
             self.settings.keep_alive = self.s_keepalive.get().strip() or "5m"
@@ -1829,6 +2002,7 @@ class UnificationApp(ctk.CTk):
         if hasattr(self, "render_var"):
             self.settings.auto_render_preview = bool(self.render_var.get())
         self.ollama = OllamaClient(self.settings.ollama_url)
+        self.llm = self._build_provider()
         self.blender = BlenderClient(self.settings.blender_host, self.settings.blender_port)
         self._save_settings()
         self._refresh_status()
@@ -1875,7 +2049,7 @@ class UnificationApp(ctk.CTk):
             text_color=T.INK_DIM,
             font=(T.FONT_MONO, 12),
         ).pack(side="left")
-        IconButton(bar, text="Clear", command=self._clear_logs, width=82, tooltip="Wipe in-memory and on-disk log").pack(side="right")
+        IconButton(bar, text=t("logs.btn.clear"), command=self._clear_logs, width=82, tooltip=t("logs.btn.clear.tooltip")).pack(side="right")
         IconButton(bar, text=t("logs.btn.refresh"), command=self._refresh_logs_view, width=92).pack(side="right", padx=(0, 8))
 
         self.log_box = ctk.CTkTextbox(
@@ -1938,7 +2112,7 @@ class UnificationApp(ctk.CTk):
         )
         card.grid(row=0, column=0, sticky="ew", pady=10)
 
-        big = self._ctk_image(ASSETS / "logo.png", (120, 120))
+        big = self._ctk_image(ASSETS / "logo.png", (200, 200))
         if big:
             ctk.CTkLabel(card, image=big, text="").pack(pady=(28, 8))
         ctk.CTkLabel(card, text=self.APP_TITLE, text_color=T.INK, font=(T.FONT_FAMILY, 26, "bold")).pack()
@@ -1946,7 +2120,6 @@ class UnificationApp(ctk.CTk):
             card, text=f"v{self.APP_VERSION}", text_color=T.INK_DIM, font=(T.FONT_FAMILY, 13)
         ).pack(pady=(2, 14))
 
-        body = t("about.body")
         ctk.CTkLabel(
             card, text=t("about.body"), text_color=T.INK_MUTED, font=(T.FONT_FAMILY, 14),
             wraplength=820, justify="center",
@@ -2043,26 +2216,54 @@ class UnificationApp(ctk.CTk):
         """Determine which creative app to target based on online status + keywords.
 
         Priority:
-        1. Explicit keyword in user message (freecad, gimp, inkscape, blender)
+        1. Explicit keyword in user message
         2. First online creative app (Blender checked first)
         3. Default to blender
         """
         lower = user_msg.lower()
-        # Explicit keyword match
+        # Explicit keyword match — check all 5 apps
         if "freecad" in lower or "free cad" in lower:
             return "freecad"
+        if "inkscape" in lower:
+            return "inkscape"
+        if "photoshop" in lower:
+            return "photoshop"
         if "gimp" in lower:
             return "gimp"
         if "blender" in lower:
             return "blender"
         # Check which apps are online (pill state)
-        if self.pill_blender._state == "ok":
+        if self.pill_blender.state == "ok":
             return "blender"
-        for app_key in ("freecad", "gimp"):
+        for app_key in ("freecad", "gimp", "inkscape", "photoshop"):
             pill = self._app_pills.get(app_key)
-            if pill and pill._state == "ok":
+            if pill and pill.state == "ok":
                 return app_key
         return "blender"  # fallback
+
+    # ── LLM provider helpers ────────────────────────────────────────
+
+    def _build_provider(self):
+        """Create the active LLM provider from current settings."""
+        p = self.settings.llm_provider
+        if p == "claude":
+            return create_provider("claude", api_key=self.settings.claude_api_key)
+        if p == "openai":
+            return create_provider("openai", api_key=self.settings.openai_api_key)
+        if p == "gemini":
+            return create_provider("gemini", api_key=self.settings.gemini_api_key)
+        return create_provider("ollama", base_url=self.settings.ollama_url)
+
+    def _active_model(self) -> str:
+        """Return the model name for the active provider."""
+        p = self.settings.llm_provider
+        if p == "claude":
+            return self.settings.claude_model
+        if p == "openai":
+            return self.settings.openai_model
+        if p == "gemini":
+            return self.settings.gemini_model
+        return self.settings.ollama_model
 
     def _target_port(self, app: str) -> int:
         """Return the TCP port for the given app key."""
@@ -2079,43 +2280,44 @@ class UnificationApp(ctk.CTk):
 
     def _exec_in_app_generic(self, turn: ChatTurn, code: str, app: str) -> None:
         """Execute code in a non-Blender creative app via raw TCP."""
-        import json as _json
-        import socket as _socket
-
         app_label = self._target_label(app)
         port = self._target_port(app)
         host = self.settings.blender_host  # same host for all apps
-        payload = _json.dumps({"type": "execute", "code": code})
+        request = json.dumps({"type": "execute", "code": code})
 
         backoff = 1.0
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                with _socket.create_connection((host, port), timeout=120.0) as sock:
+                with socket.create_connection((host, port), timeout=120.0) as sock:
                     sock.settimeout(120.0)
-                    sock.sendall(payload.encode("utf-8") + b"\x00")
+                    sock.sendall(request.encode("utf-8") + b"\x00")
                     buf = bytearray()
+                    _MAX_RESP = 50 * 1024 * 1024  # 50 MB cap (same as BlenderClient)
                     while True:
                         chunk = sock.recv(8192)
                         if not chunk:
                             break
                         buf.extend(chunk)
+                        if len(buf) > _MAX_RESP:
+                            raise RuntimeError(f"Response too large (>{_MAX_RESP // (1024*1024)} MB)")
                         if b"\x00" in chunk:
                             break
                 raw = bytes(buf).rstrip(b"\x00").decode("utf-8", errors="replace")
-                data = _json.loads(raw) if raw else {}
+                data = json.loads(raw) if raw else {}
                 result_payload = {
                     "result": data.get("result"),
                     "stdout": data.get("stdout", ""),
                     "message": data.get("message", ""),
                 }
                 status = data.get("status", "error")
-                self.after(0, turn.set_blender_result, status, result_payload, app_label)
+                self.after(0, turn.set_exec_result, status, result_payload, app_label)
                 self.after(0, self._refresh_status)
                 self.after(0, lambda: self._log(f"{app}: {status}"))
                 self.after(0, self._save_history_async)
-                if status in ("error",) and data.get("message"):
-                    self.after(0, lambda: self._maybe_auto_fix(turn, data.get("message", "")))
+                if status in ("error", "transport_error") and data.get("message"):
+                    err_msg = data.get("message", "")
+                    self.after(0, lambda e=err_msg: self._maybe_auto_fix(turn, e, app_label))
                 return
             except ConnectionRefusedError as exc:
                 last_exc = exc
@@ -2125,17 +2327,22 @@ class UnificationApp(ctk.CTk):
                     continue
             except Exception as exc:
                 result_payload = {"result": None, "stdout": "", "message": f"{type(exc).__name__}: {exc}"}
-                self.after(0, turn.set_blender_result, "transport_error", result_payload, app_label)
+                self.after(0, turn.set_exec_result, "transport_error", result_payload, app_label)
                 self.after(0, lambda: self._log(f"{app}: transport_error"))
                 return
 
         result_payload = {"result": None, "stdout": "",
                           "message": f"ConnectionRefusedError after 3 attempts: {last_exc}"}
-        self.after(0, turn.set_blender_result, "transport_error", result_payload, app_label)
+        self.after(0, turn.set_exec_result, "transport_error", result_payload, app_label)
         self.after(0, lambda: self._log(f"{app}: connection refused"))
 
     def _poll_status_loop(self) -> None:
-        self._refresh_status()
+        # Skip polling when window is minimized or iconified
+        try:
+            if self.state() != "iconic":
+                self._refresh_status()
+        except Exception:
+            self._refresh_status()
         self.after(15000, self._poll_status_loop)
 
     # =========================================================== shortcuts
@@ -2155,7 +2362,7 @@ class UnificationApp(ctk.CTk):
     def _on_escape(self) -> None:
         if self._stop_event is not None:
             self._stop_event.set()
-            Toast(self, "Streaming stopped", kind="warn", duration_ms=1400)
+            Toast(self, t("toast.stopped"), kind="warn", duration_ms=1400)
 
     def _focus_prompt(self) -> None:
         self.show_view("chat")
@@ -2214,7 +2421,7 @@ class UnificationApp(ctk.CTk):
             payload = entry.get("blender_payload") or {}
             status = entry.get("blender_status")
             if status:
-                turn.set_blender_result(status, payload)
+                turn.set_exec_result(status, payload)
             self._convo_history.append({"role": "user", "content": prompt})
             if entry.get("response"):
                 self._convo_history.append({"role": "assistant", "content": entry["response"]})
@@ -2226,7 +2433,7 @@ class UnificationApp(ctk.CTk):
         self._save_settings()
         if self.settings.persist_history:
             try:
-                save_history([t.to_dict() for t in self._chat_turns])
+                save_history([turn.to_dict() for turn in self._chat_turns])
             except Exception:
                 pass
         self._log("app closing")

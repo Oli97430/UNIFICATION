@@ -85,7 +85,7 @@ class _BrushApiFixer(ast.NodeTransformer):
                     targets=[
                         ast.Attribute(
                             value=ast.Name(id=node.targets[0].id, ctx=ast.Load()),
-                            attr="sculpt_tool",
+                            attr="sculpt_brush_type",
                             ctx=ast.Store(),
                         )
                     ],
@@ -103,12 +103,55 @@ class _BrushApiFixer(ast.NodeTransformer):
         return node
 
 
+# Principled BSDF socket renames (Blender 4.x).  Maps legacy → new name.
+_BSDF_SOCKET_RENAMES: dict[str, str] = {
+    "Subsurface":          "Subsurface Weight",
+    "Subsurface Color":    "Subsurface Radius",
+    "Specular":            "Specular IOR Level",
+    "Transmission":        "Transmission Weight",
+    "Clearcoat":           "Coat Weight",
+    "Clearcoat Roughness": "Coat Roughness",
+    "Clearcoat Normal":    "Coat Normal",
+    "Sheen":               "Sheen Weight",
+    "Emission":            "Emission Color",
+}
+
+# Match  .inputs["LegacyName"]  with optional whitespace
+_BSDF_INPUT_RE = re.compile(
+    r'\.inputs\s*\[\s*(["\'])'
+    r'(' + '|'.join(re.escape(k) for k in _BSDF_SOCKET_RENAMES) + r')'
+    r'\1\s*\]'
+)
+
+_SCULPT_TOOL_RE = re.compile(r"\.sculpt_tool\b")
 _BRUSH_TOOL_RE = re.compile(r"brushes\s*\.\s*new\s*\([^)]*\btool\s*=")
 _EXPORT_OBJ_RE = re.compile(r"bpy\.ops\.export_scene\.obj\s*\(")
 _IMPORT_OBJ_RE = re.compile(r"bpy\.ops\.import_scene\.obj\s*\(")
 _LIGHT_ADD_HEMI_RE = re.compile(r"light_add\s*\([^)]*type\s*=\s*['\"]HEMI['\"]")
 _BSDF_BY_NAME_RE = re.compile(r"""nodes\s*\[\s*["']Principled BSDF["']\s*\]""")
 _MATHUTILS_RADIANS_RE = re.compile(r"\bmathutils\.(radians|degrees)\b")
+# Match brush.size = 50.0  (float literal for an int property)
+_BRUSH_SIZE_FLOAT_RE = re.compile(r"(\.size\s*=\s*)(\d+)\.0\b")
+# Match bpy.ops.mesh.displace(
+_MESH_DISPLACE_RE = re.compile(r"bpy\.ops\.mesh\.displace\s*\(")
+# Match  X.brush = ...  where X is a sculpt/paint tool settings variable.
+# Covers: sculpt.brush = ..., ts.brush = ..., tool_settings.sculpt.brush = ...
+# In Blender 5.x, .brush is read-only on ALL paint/sculpt tool_settings.
+_SCULPT_BRUSH_ASSIGN_RE = re.compile(
+    r"^(\s*)"                                 # leading indent
+    r"(\w+(?:\.\w+)*)\.brush\s*=\s*(.+)$",   # any_var.brush = value
+    re.MULTILINE,
+)
+# Match subdivision_set(levels=…) — should be level= (singular) in Blender 5.x
+_SUBDIV_LEVELS_RE = re.compile(r"(subdivision_set\s*\([^)]*)\blevels\b")
+
+
+def _fix_subdivision_levels(code: str) -> str:
+    """Fix `subdivision_set(levels=N)` → `subdivision_set(level=N)`.
+
+    Blender's operator uses `level` (singular); models often hallucinate `levels`.
+    """
+    return _SUBDIV_LEVELS_RE.sub(r"\1level", code)
 
 
 def _auto_inject_import_bpy(code: str) -> str:
@@ -160,6 +203,51 @@ def _fix_mathutils_radians(code: str) -> str:
     return code
 
 
+def _fix_sculpt_tool_attr(code: str) -> str:
+    """Replace `.sculpt_tool` with `.sculpt_brush_type` (renamed in Blender 5.x)."""
+    return _SCULPT_TOOL_RE.sub(".sculpt_brush_type", code)
+
+
+def _fix_sculpt_brush_assign(code: str) -> str:
+    """Comment out `X.brush = Y` assignments (read-only in Blender 5.x).
+
+    `.brush` is read-only on sculpt / paint tool_settings objects.
+    Replaces with a comment explaining the issue.
+    """
+    if not _SCULPT_BRUSH_ASSIGN_RE.search(code):
+        return code
+
+    def _repl(m: re.Match) -> str:
+        indent = m.group(1)
+        lhs = m.group(2)
+        rhs = m.group(3).strip()
+        return (
+            f"{indent}# .brush is read-only in Blender 5.x — assignment removed\n"
+            f"{indent}# original: {lhs}.brush = {rhs}"
+        )
+
+    return _SCULPT_BRUSH_ASSIGN_RE.sub(_repl, code)
+
+
+def _fix_brush_size_float(code: str) -> str:
+    """Replace `.size = 50.0` with `.size = 50` (Brush.size expects int)."""
+    return _BRUSH_SIZE_FLOAT_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}", code)
+
+
+def _fix_bsdf_socket_renames(code: str) -> str:
+    r"""Replace legacy BSDF input names with Blender 4.x names.
+
+    Rewrites e.g. `.inputs["Subsurface Color"]` → `.inputs["Subsurface Radius"]`.
+    Only touches the known-renamed sockets; stable names pass through untouched.
+    """
+    def _repl(m: re.Match) -> str:
+        quote = m.group(1)
+        legacy = m.group(2)
+        new = _BSDF_SOCKET_RENAMES.get(legacy, legacy)
+        return f'.inputs[{quote}{new}{quote}]'
+    return _BSDF_INPUT_RE.sub(_repl, code)
+
+
 def sanitize_code(code: str) -> str:
     """Best-effort rewrite of known-bad Blender 4+ API patterns.
 
@@ -168,6 +256,7 @@ def sanitize_code(code: str) -> str:
     2. Regex-based rewrites (export_scene.obj → wm.obj_export,
        import_scene.obj → wm.obj_import, HEMI → AREA,
        nodes["Principled BSDF"] → type-based lookup,
+       BSDF socket renames for 4.x,
        mathutils.radians/degrees → math.radians/degrees).
     3. AST-based brush fixer (only when `brushes.new(tool=…)` detected).
     """
@@ -176,6 +265,11 @@ def sanitize_code(code: str) -> str:
     code = _fix_import_obj(code)
     code = _fix_light_hemi(code)
     code = _fix_bsdf_by_name(code)
+    code = _fix_bsdf_socket_renames(code)
+    code = _fix_sculpt_tool_attr(code)
+    code = _fix_sculpt_brush_assign(code)
+    code = _fix_brush_size_float(code)
+    code = _fix_subdivision_levels(code)
     code = _fix_mathutils_radians(code)
 
     # AST pass — only when needed (ast.unparse strips comments)
@@ -185,7 +279,7 @@ def sanitize_code(code: str) -> str:
             tree = _BrushApiFixer().visit(tree)
             ast.fix_missing_locations(tree)
             code = ast.unparse(tree)
-        except (SyntaxError, Exception):
+        except Exception:
             pass
     return code
 

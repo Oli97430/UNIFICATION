@@ -14,8 +14,16 @@ LOG_PATH = CONFIG_DIR / "events.log"
 
 @dataclass
 class Settings:
+    # LLM provider: "ollama" | "claude" | "openai" | "gemini"
+    llm_provider: str = "ollama"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:32b"
+    claude_api_key: str = ""
+    claude_model: str = "claude-sonnet-4-20250514"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
     blender_host: str = "127.0.0.1"
     blender_port: int = 9876
     appearance_mode: str = "dark"  # "dark" | "light" | "system"

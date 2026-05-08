@@ -63,7 +63,10 @@ You describe what you want in plain language; the app asks Ollama to write the P
 | **No cloud** | Every token stays local. No quotas, no billing, no data leaks. |
 | **One-click addon install** | The app detects every Blender installation on your system and copies the addon for you. |
 | **Auto-fix on error** | When Blender raises an exception, the traceback is fed back to the model for silent self-correction. |
-| **Blender 4.x hardened** | Hardened system prompt + runtime AST sanitizer with **7 rewrite rules** that fix broken API calls before they hit Blender. |
+| **Blender 4.x hardened** | Hardened system prompt + runtime AST sanitizer with **8 rewrite rules** that fix broken API calls before they hit Blender. |
+| **Category-aware prompts** | 10 Blender categories (materials, lighting, physics, particles, sculpting, rendering, geometry nodes, modeling, animation, import/export) detected from your prompt — only relevant API docs are injected. |
+| **Visual prompt badges** | Colored pills on each chat turn show the prompt mode (creator / query / fix) and detected categories at a glance. |
+| **Multi-LLM providers** | Ollama (default, local), plus optional Claude, OpenAI, and Gemini backends — same streaming interface, no vendor SDK required. |
 | **Vision support** | Attach a reference image when using a vision-capable model (`qwen2.5-vl`, `llava`, …). |
 | **Multilingual** | Full English / French UI — auto-detected from your OS locale. |
 | **MCP Server** | Unified stdio JSON-RPC 2.0 server for Claude Desktop / Cursor — controls all 5 apps from one endpoint. |
@@ -113,6 +116,7 @@ You describe what you want in plain language; the app asks Ollama to write the P
 | 5 | `nodes["Principled BSDF"]` | → type-based lookup `n.type == "BSDF_PRINCIPLED"` (locale-independent) |
 | 6 | `mathutils.radians(...)` / `.degrees(...)` | → `math.radians(...)` / `math.degrees(...)` |
 | 7 | `bpy.data.brushes.new(..., tool=X)` | AST rewrite: strips `tool=`, adds `brush.sculpt_tool = X`, fixes `tool=` → `mode=` kwarg |
+| 8 | `subdivision_set(levels=N)` | → `subdivision_set(level=N)` (Blender expects `level`, singular) |
 
 ---
 
@@ -209,11 +213,16 @@ The status pill turns green when connected.
 2. Restart GIMP.
 3. Filters → Python-Fu → **MCP Server Start**.
 
-**GIMP 3.0+:**
-1. Create a subfolder: `~/.config/GIMP/3.0/plug-ins/gimp_mcp_addon/`
-2. Copy `gimp_mcp_addon.py` inside that subfolder (GIMP 3 requires the subfolder name to match the script name).
+**GIMP 3.0+ (tested on 3.2):**
+1. Create a subfolder matching the script name:
+   - **Windows:** `%APPDATA%\GIMP\3.2\plug-ins\gimp_mcp_addon\`
+   - **macOS:** `~/Library/Application Support/GIMP/3.2/plug-ins/gimp_mcp_addon/`
+   - **Linux:** `~/.config/GIMP/3.2/plug-ins/gimp_mcp_addon/`
+2. Copy `gimp_mcp_addon.py` inside that subfolder.
 3. Restart GIMP.
-4. Filters → **MCP Server Start**.
+4. Open or create an image, then Filters → **MCP Server Start**.
+
+> **Note:** GIMP 3 kills plugin subprocesses after execution, so the addon spawns a **detached standalone Python process** that survives independently. The menu item "MCP Server Stop" terminates it.
 
 ### Inkscape (port 9879)
 
@@ -337,9 +346,9 @@ Vision models are auto-detected from the model name (markers: `vl`, `llava`, `vi
 |---|---|
 | `main.py` | Entry point — adds project root to `sys.path`, calls `gui.app.main()` |
 | `core/ollama_client.py` | HTTP streaming client (`/api/chat`, `/api/tags`), token budget, vision detection, code extraction |
-| `core/blender_client.py` | TCP client, `temp_override` wrap, render postamble, AST sanitizer (7 rewrite rules), exponential backoff retry |
+| `core/blender_client.py` | TCP client, `temp_override` wrap, render postamble, AST sanitizer (8 rewrite rules), exponential backoff retry |
 | `core/tcp_ping.py` | Lightweight TCP ping for FreeCAD / GIMP / Inkscape / Photoshop addons |
-| `core/system_prompt.py` | Creator & query prompts, Blender 4.x rules, intent router (`is_query_intent`) |
+| `core/system_prompt.py` | Creator & query prompts, Blender 4.x rules, 10-category keyword detection, intent router (`is_query_intent`) |
 | `core/lint.py` | Pre-flight `ast.parse` lint + 5 semantic pattern warnings |
 | `core/addon_installer.py` | Multi-OS Blender folder detection (Win/macOS/Linux/Snap/Flatpak), GitHub download, offline fallback |
 | `core/updater.py` | GitHub Releases update check (`tag_name` vs `APP_VERSION`) |
@@ -352,7 +361,8 @@ Vision models are auto-detected from the model name (markers: `vl`, `llava`, `vi
 | `mcp_server.py` | Unified MCP server (stdio JSON-RPC 2.0) — 7 tools, routes to all 5 creative apps |
 | `assets/blender_mcp_addon.py` | Blender N-Panel addon — TCP server on port 9876, background thread, main-thread exec queue |
 | `assets/freecad_mcp_addon.py` | FreeCAD Macro plugin — TCP server on port 9877 |
-| `assets/gimp_mcp_addon.py` | GIMP Python-Fu plugin — TCP server on port 9878 |
+| `core/llm_providers.py` | Unified streaming LLM providers — Ollama (local), Claude, OpenAI, Gemini — same `chat_stream()` interface |
+| `assets/gimp_mcp_addon.py` | GIMP 2.x/3.x plugin — TCP server on port 9878 (GIMP 3: detached standalone process) |
 | `assets/inkscape_mcp_server.py` | Standalone server for Inkscape — TCP on port 9879, lxml/inkex + CLI |
 | `assets/photoshop_mcp_server.py` | Standalone server for Photoshop — TCP on port 9880, COM (Win) / AppleScript (macOS) |
 
@@ -482,6 +492,8 @@ No telemetry. No network calls except to your local Ollama instance and GitHub's
 | `TypeError: brushes.new() tool=…` | Fixed by the runtime AST sanitizer since v1.1.2. Update the app. |
 | `import_scene.obj` / `export_scene.obj` not found | Fixed automatically — the sanitizer rewrites to `wm.obj_import` / `wm.obj_export`. |
 | `mathutils.radians` / `mathutils.degrees` | Fixed automatically — rewritten to `math.radians` / `math.degrees`. |
+| `subdivision_set(levels=N)` | Fixed automatically — rewritten to `level` (singular). |
+| `NameError: name 'size' is not defined` | Regenerate (`↻`). The system prompt now enforces defining all variables before use. |
 
 ### FreeCAD
 
@@ -494,8 +506,9 @@ No telemetry. No network calls except to your local Ollama instance and GitHub's
 
 | Symptom | Fix |
 |---|---|
-| **GIMP** pill stays red | Filters → Python-Fu → MCP Server Start. If the menu entry doesn't exist, the plugin isn't installed correctly. |
-| Plugin not visible in menus | GIMP 2.10: check file permissions (`chmod +x` on Linux/macOS). GIMP 3.0+: the script must be in a subfolder with the same name. |
+| **GIMP** pill stays red | Open an image first, then Filters → MCP Server Start. GIMP 3 requires an open image for the menu item to be active. |
+| Plugin not visible in menus | GIMP 2.10: check file permissions (`chmod +x` on Linux/macOS). GIMP 3.0+: the script must be in a subfolder with the same name (`gimp_mcp_addon/gimp_mcp_addon.py`). |
+| Server started but ping fails | GIMP 3 spawns a detached Python process. Check if it's running (`gimp_mcp_server.pid` in your temp folder). Try Filters → MCP Server Stop, then Start again. |
 
 ### Inkscape
 
