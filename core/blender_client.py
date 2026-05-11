@@ -129,6 +129,26 @@ _EXPORT_OBJ_RE = re.compile(r"bpy\.ops\.export_scene\.obj\s*\(")
 _IMPORT_OBJ_RE = re.compile(r"bpy\.ops\.import_scene\.obj\s*\(")
 _LIGHT_ADD_HEMI_RE = re.compile(r"light_add\s*\([^)]*type\s*=\s*['\"]HEMI['\"]")
 _BSDF_BY_NAME_RE = re.compile(r"""nodes\s*\[\s*["']Principled BSDF["']\s*\]""")
+
+# Common shader/GN node names that models look up by label instead of type.
+# Maps display name → Blender internal node type for type-based lookup.
+_NODE_NAME_TYPE_MAP: dict[str, str] = {
+    "Geometry":           "NEW_GEOMETRY",
+    "Material Output":    "OUTPUT_MATERIAL",
+    "World Output":       "OUTPUT_WORLD",
+    "Group Input":        "GROUP_INPUT",
+    "Group Output":       "GROUP_OUTPUT",
+    "Mix Shader":         "MIX_SHADER",
+    "Texture Coordinate": "TEX_COORD",
+    "Image Texture":      "TEX_IMAGE",
+    "ColorRamp":          "VALTORGB",
+    "Mapping":            "MAPPING",
+}
+_NODE_BY_NAME_RE = re.compile(
+    r"""nodes\s*\[\s*["']("""
+    + "|".join(re.escape(k) for k in _NODE_NAME_TYPE_MAP)
+    + r""")["']\s*\]"""
+)
 _MATHUTILS_RADIANS_RE = re.compile(r"\bmathutils\.(radians|degrees)\b")
 # Match brush.size = 50.0  (float literal for an int property)
 _BRUSH_SIZE_FLOAT_RE = re.compile(r"(\.size\s*=\s*)(\d+)\.0\b")
@@ -185,6 +205,19 @@ def _fix_bsdf_by_name(code: str) -> str:
     return _BSDF_BY_NAME_RE.sub(
         "next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)", code
     )
+
+
+def _fix_node_by_name(code: str) -> str:
+    """Replace `nodes["Geometry"]` (and other common names) with type-based lookup.
+
+    Models hallucinate node names that are locale-dependent or simply wrong.
+    A type-based lookup is always reliable.
+    """
+    def _repl(m: re.Match) -> str:
+        name = m.group(1)
+        ntype = _NODE_NAME_TYPE_MAP[name]
+        return f"next((n for n in nodes if n.type == '{ntype}'), None)"
+    return _NODE_BY_NAME_RE.sub(_repl, code)
 
 
 def _fix_mathutils_radians(code: str) -> str:
@@ -256,6 +289,7 @@ def sanitize_code(code: str) -> str:
     2. Regex-based rewrites (export_scene.obj → wm.obj_export,
        import_scene.obj → wm.obj_import, HEMI → AREA,
        nodes["Principled BSDF"] → type-based lookup,
+       nodes["Geometry"/…] → type-based lookup (10 common node names),
        BSDF socket renames for 4.x,
        mathutils.radians/degrees → math.radians/degrees).
     3. AST-based brush fixer (only when `brushes.new(tool=…)` detected).
@@ -265,6 +299,7 @@ def sanitize_code(code: str) -> str:
     code = _fix_import_obj(code)
     code = _fix_light_hemi(code)
     code = _fix_bsdf_by_name(code)
+    code = _fix_node_by_name(code)
     code = _fix_bsdf_socket_renames(code)
     code = _fix_sculpt_tool_attr(code)
     code = _fix_sculpt_brush_assign(code)

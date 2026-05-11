@@ -16,6 +16,10 @@
   </a>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"/>
   <img src="https://img.shields.io/badge/blender-4.0%2B-orange" alt="Blender 4.0+"/>
+  <img src="https://img.shields.io/badge/FreeCAD-0.20%2B-009900" alt="FreeCAD 0.20+"/>
+  <img src="https://img.shields.io/badge/GIMP-2.10%20%7C%203.x-9B8E00" alt="GIMP 2.10 | 3.x"/>
+  <img src="https://img.shields.io/badge/Inkscape-1.x-333333" alt="Inkscape 1.x"/>
+  <img src="https://img.shields.io/badge/Photoshop-CC-31A8FF" alt="Photoshop CC"/>
   <img src="https://img.shields.io/badge/licence-GPL--3.0-green" alt="GPL-3.0"/>
 </p>
 
@@ -111,8 +115,10 @@ Tu decris ce que tu veux en langage naturel ; l'app demande a Ollama d'ecrire le
 | 3 | `bpy.ops.import_scene.obj(...)` | → `bpy.ops.wm.obj_import(...)` (supprime en 4.0) |
 | 4 | `light_add(type='HEMI')` | → `type='AREA'` (HEMI supprime) |
 | 5 | `nodes["Principled BSDF"]` | → recherche par type `n.type == "BSDF_PRINCIPLED"` (independant de la locale) |
-| 6 | `mathutils.radians(...)` / `.degrees(...)` | → `math.radians(...)` / `math.degrees(...)` |
-| 7 | `bpy.data.brushes.new(..., tool=X)` | Reecriture AST : supprime `tool=`, ajoute `brush.sculpt_tool = X`, corrige `tool=` → `mode=` |
+| 6 | `nodes["Geometry"]`, `nodes["Material Output"]`, etc. | → recherche par type pour 10 noms de noeuds courants (independant de la locale) |
+| 7 | `mathutils.radians(...)` / `.degrees(...)` | → `math.radians(...)` / `math.degrees(...)` |
+| 8 | `bpy.data.brushes.new(..., tool=X)` | Reecriture AST : supprime `tool=`, ajoute `brush.sculpt_tool = X`, corrige `tool=` → `mode=` |
+| 9 | `subdivision_set(levels=N)` | → `subdivision_set(level=N)` (Blender attend `level`, singulier) |
 
 ---
 

@@ -72,7 +72,7 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 class UnificationApp(ctk.CTk):
     APP_TITLE = "UNIFICATION"
-    APP_VERSION = "2.2.0"
+    APP_VERSION = "2.2.1"
 
     def __init__(self) -> None:
         super().__init__()
@@ -2433,6 +2433,7 @@ class UnificationApp(ctk.CTk):
             try:
                 with socket.create_connection((host, port), timeout=timeout) as sock:
                     sock.settimeout(timeout)
+                    sock.sendall(request.encode("utf-8") + b"\x00")
                     buf = bytearray()
                     _MAX_RESP = 50 * 1024 * 1024  # 50 MB cap (same as BlenderClient)
                     while True:

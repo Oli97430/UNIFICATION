@@ -751,6 +751,10 @@ CORE RULES
 6. For boolean operations: `Part.Shape.fuse()`, `.cut()`, `.common()`.
 7. Wrap `obj.ViewObject.X = Y` in try/except — ViewObject may be unavailable headless.
 8. EVERY variable must be DEFINED before use.  Use LITERAL values for dimensions.
+   ALL dimensions (length, width, height, radius) MUST be > 0.
+   `Part.makeBox(length, width, height)` — all three MUST be positive floats (never 0).
+   `Part.makeCylinder(radius, height)` — both MUST be positive (never 0).
+   If computing dimensions, clamp: `h = max(0.1, computed_h)`
 
 ANGLES — CRITICAL
 9. NEVER use `Units.RADIAN`, `Units.DEGREE`, or `import Units` — these do NOT exist.
@@ -762,12 +766,22 @@ ANGLES — CRITICAL
 11. Sketcher angles: constraints use RADIANS internally.
     `Sketcher.Constraint("Angle", ..., math.radians(45))`
 
+UNITS & QUANTITIES — CRITICAL
+12. Use PLAIN FLOATS (not Quantity objects) for ALL dimensions and arithmetic.
+    WRONG: `App.Units.Quantity(10, "mm") - App.Units.Quantity(5, "deg")` → Unit mismatch!
+    WRONG: `App.Units.Quantity("10 mm") - 5.0` → Unit mismatch!
+    RIGHT: `length = 10.0`  (plain float, FreeCAD assumes mm internally)
+    RIGHT: `pad.Length = 10`  (FreeCAD properties accept plain numbers)
+13. NEVER mix Quantity objects with different unit types in arithmetic.
+14. NEVER subtract/add a Quantity from/to a plain float — use plain floats everywhere.
+15. For positions, use `App.Vector(x, y, z)` with plain float coordinates.
+
 NULL SHAPE PREVENTION
-12. `Part.Wire(edges)` requires edges to form a CONNECTED path — check edge connectivity.
-13. `Part.Face(wire)` requires the wire to be CLOSED — check `wire.isClosed()`.
-14. After any shape construction, verify: `if shape.isNull(): raise ValueError("Null shape")`
-15. For lofts/sweeps: all profile wires must be closed AND have the same number of edges.
-16. Always call `doc.recompute()` between creating a sketch and using it in Pad/Pocket.
+16. `Part.Wire(edges)` requires edges to form a CONNECTED path — check edge connectivity.
+17. `Part.Face(wire)` requires the wire to be CLOSED — check `wire.isClosed()`.
+18. After any shape construction, verify: `if shape.isNull(): raise ValueError("Null shape")`
+19. For lofts/sweeps: all profile wires must be closed AND have the same number of edges.
+20. Always call `doc.recompute()` between creating a sketch and using it in Pad/Pocket.
 """
 
 _FREECAD_SEC_SKETCH = """
@@ -1027,6 +1041,14 @@ The previous code you generated raised an error.  Your task:
      -> Part.Wire(edges) with non-connected edges, or Part.Face(open_wire).
         Ensure wire edges connect end-to-end.  Check `wire.isClosed()` before Face.
         Check `shape.isNull()` after every shape operation.
+   - ArithmeticError "Unit mismatch in minus/plus operation"
+     -> NEVER use App.Units.Quantity for arithmetic.  Use PLAIN FLOATS for all dimensions.
+        WRONG: `Quantity(10,"mm") - Quantity(5,"deg")`.  RIGHT: `10.0 - 5.0`.
+        Replace ALL Quantity(...) with plain float literals.
+   - ValueError "height of box too small" / "radius of cylinder too small"
+     -> A dimension is 0 or negative.  ALL dimensions MUST be > 0.
+        Check every makeBox(l,w,h), makeCylinder(r,h), makeSphere(r) call.
+        If computing dimensions, clamp: `h = max(0.1, computed_value)`.
    - NameError (undefined variable) -> define it with a literal value before use.
    - No active document -> add `doc = App.newDocument("Unnamed")`.
    - ViewObject error -> wrap in try/except (headless mode).

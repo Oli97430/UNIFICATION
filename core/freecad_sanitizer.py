@@ -182,7 +182,60 @@ def _fix_units_constants(code: str) -> str:
 
 
 # ------------------------------------------------------------------ #
-# 6. Fix null-shape risks: ensure shapes are validated                #
+# 6. Strip App.Units.Quantity() — use plain floats                    #
+# ------------------------------------------------------------------ #
+
+# Models produce ``App.Units.Quantity(10, "mm")`` or ``App.Units.Quantity("10 mm")``
+# then mix them in arithmetic causing "Unit mismatch in minus operation".
+# Strategy: ``App.Units.Quantity(10, "mm")`` → ``10``
+#           ``App.Units.Quantity("10 mm")``  → ``10``
+#           ``FreeCAD.Units.Quantity(...)``   → same treatment
+
+# Prefix pattern: App.Units. | FreeCAD.Units. | Units.  (bare, after `from FreeCAD import Units`)
+_QTY_PFX = r"(?:(?:App|FreeCAD)\.)?Units\.Quantity"
+
+# Two-arg form: Quantity(number_or_expr, "unit")
+_QUANTITY_2ARG_RE = re.compile(
+    _QTY_PFX + r"\s*\(\s*"
+    r"([^,\"']+?)"                  # group 1: the numeric value / expression
+    r"\s*,\s*[\"'][^\"']*[\"']\s*\)"
+    r"(?:\.Value)?",                # optional .Value accessor
+)
+# One-arg string form: Quantity("10 mm")
+_QUANTITY_1ARG_RE = re.compile(
+    _QTY_PFX + r"\s*\(\s*"
+    r"[\"']"
+    r"([\d.eE+\-]+)"               # group 1: numeric part
+    r"\s+[a-zA-Z/°]+[\"']\s*\)"
+    r"(?:\.Value)?",
+)
+# Bare Quantity(number) — no unit string, just a passthrough
+_QUANTITY_BARE_RE = re.compile(
+    _QTY_PFX + r"\s*\(\s*"
+    r"([\d.eE+\-]+)"
+    r"\s*\)"
+    r"(?:\.Value)?",
+)
+
+
+def _strip_quantity(code: str) -> str:
+    """Replace ``App.Units.Quantity(10, "mm")`` → ``10`` (plain float).
+
+    Handles all prefix forms: ``App.Units.Quantity``, ``FreeCAD.Units.Quantity``,
+    and bare ``Units.Quantity`` (from ``from FreeCAD import Units``).
+    Also strips trailing ``.Value`` accessor.
+
+    FreeCAD properties already expect floats in the document's unit system (mm).
+    Using Quantity objects in arithmetic causes ArithmeticError on unit mismatch.
+    """
+    code = _QUANTITY_2ARG_RE.sub(r"\1", code)
+    code = _QUANTITY_1ARG_RE.sub(r"\1", code)
+    code = _QUANTITY_BARE_RE.sub(r"\1", code)
+    return code
+
+
+# ------------------------------------------------------------------ #
+# 7. Fix null-shape risks: ensure shapes are validated                #
 # ------------------------------------------------------------------ #
 
 # Models produce code that chains shape operations without null-checks.
@@ -209,7 +262,7 @@ def _add_null_shape_guard(code: str) -> str:
 
 
 # ------------------------------------------------------------------ #
-# 7. Fix common API mistakes                                         #
+# 8. Fix common API mistakes                                         #
 # ------------------------------------------------------------------ #
 
 # Models sometimes write App.ActiveDocument.addObject() without checking
@@ -226,7 +279,7 @@ def _fix_active_doc_usage(code: str) -> str:
 
 
 # ------------------------------------------------------------------ #
-# 6. OCC error wrapper — add try/except around risky operations       #
+# 9. OCC error wrapper — add try/except around risky operations       #
 # ------------------------------------------------------------------ #
 
 _OCC_RISKY = re.compile(
@@ -252,7 +305,7 @@ def _add_occ_error_context(code: str) -> str:
 
 
 # ------------------------------------------------------------------ #
-# 7. Fix ViewObject access in headless/macro mode                     #
+# 10. Fix ViewObject access in headless/macro mode                    #
 # ------------------------------------------------------------------ #
 
 _VIEW_OBJ_RE = re.compile(
@@ -285,16 +338,18 @@ def sanitize_freecad_code(code: str) -> str:
     1. Auto-inject missing imports (FreeCAD, Part, Draft, etc.)
     2. Auto-inject ``doc = ...`` if missing
     3. Fix ``Units.RADIAN`` / ``Units.DEGREE`` hallucinations
-    4. Normalise ``App.ActiveDocument.addObject`` to ``doc.addObject``
-    5. Guard ``makeFillet`` / ``makeChamfer`` with empty-edge check
-    6. Add null-shape guard comments
-    7. Guard ``ViewObject`` access for headless mode
-    8. Add OCC error context comment
-    9. Auto-inject ``doc.recompute()`` at end if missing
+    4. Strip ``App.Units.Quantity(10, "mm")`` → plain float ``10``
+    5. Normalise ``App.ActiveDocument.addObject`` to ``doc.addObject``
+    6. Guard ``makeFillet`` / ``makeChamfer`` with empty-edge check
+    7. Add null-shape guard comments
+    8. Guard ``ViewObject`` access for headless mode
+    9. Add OCC error context comment
+    10. Auto-inject ``doc.recompute()`` at end if missing
     """
     code = _auto_inject_imports(code)
     code = _auto_inject_doc(code)
     code = _fix_units_constants(code)
+    code = _strip_quantity(code)
     code = _fix_active_doc_usage(code)
     code = _guard_fillet_chamfer(code)
     code = _add_null_shape_guard(code)
