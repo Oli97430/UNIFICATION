@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "creative-suite": {
+      "command": "python",
+      "args": ["F:\\OllamatToBlender\\mcp_server.py"]
+    }
+  }
+}
