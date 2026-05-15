@@ -67,6 +67,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- chat / empty state
         "chat.empty.title": "UNIFICATION",
         "chat.empty.subtitle": "Describe what you want to create.\nOllama generates the code, the addon runs it in your creative app.",
+        "chat.claude_banner.title": "Works with Claude Code & Claude Desktop!",
+        "chat.claude_banner.body": "With the addon installed in your creative apps, launch any Blender or FreeCAD\nmodeling directly from Claude — no need to open this GUI!\nJust run Claude Code in the project folder, MCP tools are auto-detected.",
+        "chat.claude_banner.hint": "claude   →   \"Create a phone stand in FreeCAD\"   →   done!",
         "chat.placeholder": "Describe a task…   (e.g. add a glass sphere in Blender, draw a red circle in Inkscape)",
         "chat.hint.send": "Ctrl+Enter to send",
 
@@ -445,6 +448,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- chat / empty state
         "chat.empty.title": "UNIFICATION",
         "chat.empty.subtitle": "Décris ce que tu veux créer.\nOllama génère le code, l'addon l'exécute dans ton appli créative.",
+        "chat.claude_banner.title": "Compatible Claude Code & Claude Desktop !",
+        "chat.claude_banner.body": "Une fois le plugin installé dans vos applis créatives, lancez n'importe quelle\nmodélisation Blender ou FreeCAD directement depuis Claude — pas besoin d'ouvrir cette interface !\nOuvrez Claude Code dans le dossier du projet, les outils MCP sont détectés automatiquement.",
+        "chat.claude_banner.hint": "claude   →   « Crée un support téléphone dans FreeCAD »   →   c'est fait !",
         "chat.placeholder": "Décris une tâche…   (ex. une sphère en verre dans Blender, un cercle rouge dans Inkscape)",
         "chat.hint.send": "Ctrl+Entrée pour envoyer",
 

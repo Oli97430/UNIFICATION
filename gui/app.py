@@ -72,7 +72,7 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 class UnificationApp(ctk.CTk):
     APP_TITLE = "UNIFICATION"
-    APP_VERSION = "2.2.2"
+    APP_VERSION = "2.2.3"
 
     def __init__(self) -> None:
         super().__init__()
@@ -472,6 +472,56 @@ class UnificationApp(ctk.CTk):
             font=(T.FONT_FAMILY, 14),
             justify="center",
         ).pack(pady=(0, 18))
+
+        # ── Claude MCP integration banner ──────────────────────────
+        claude_banner = ctk.CTkFrame(
+            self.empty_state,
+            fg_color="#1A1040",
+            corner_radius=T.R_LG,
+            border_width=2,
+            border_color="#7C5CFC",
+        )
+        claude_banner.pack(fill="x", padx=36, pady=(0, 20))
+
+        # Top accent bar
+        accent_bar = ctk.CTkFrame(claude_banner, fg_color="#7C5CFC", height=3, corner_radius=0)
+        accent_bar.pack(fill="x", padx=1, pady=(1, 0))
+
+        # Title row with icon
+        title_row = ctk.CTkFrame(claude_banner, fg_color="transparent")
+        title_row.pack(fill="x", padx=18, pady=(12, 0))
+        ctk.CTkLabel(
+            title_row, text="⚡", font=(T.FONT_FAMILY, 20),
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(
+            title_row,
+            text=t("chat.claude_banner.title"),
+            text_color="#B8A0FF",
+            font=(T.FONT_FAMILY, 16, "bold"),
+        ).pack(side="left")
+
+        # Body text
+        ctk.CTkLabel(
+            claude_banner,
+            text=t("chat.claude_banner.body"),
+            text_color="#C8BDE6",
+            font=(T.FONT_FAMILY, 13),
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", padx=18, pady=(6, 0))
+
+        # Command hint box
+        hint_frame = ctk.CTkFrame(
+            claude_banner, fg_color="#120C28", corner_radius=T.R_SM,
+        )
+        hint_frame.pack(fill="x", padx=18, pady=(10, 14))
+        ctk.CTkLabel(
+            hint_frame,
+            text=t("chat.claude_banner.hint"),
+            text_color="#A78BFA",
+            font=(T.FONT_MONO, 13, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=14, pady=8)
 
         # Suggestion chips — 4 random examples per creative app, 2-column grid
         for app_key, app_label, total, accent in self._SUGGEST_APPS:
