@@ -1,0 +1,32 @@
+{
+  "manifest_version": "0.4",
+  "name": "creative-suite-mcp",
+  "version": "2.0.0",
+  "description": "Bridge Claude to Blender, FreeCAD, GIMP, Inkscape & Photoshop. Describe what you want — the LLM generates code, the addon executes it in your creative app. 100% local via TCP.",
+  "author": {
+    "name": "Olivier Hoarau",
+    "url": "https://github.com/Oli97430/UNIFICATION"
+  },
+  "repository": "https://github.com/Oli97430/UNIFICATION",
+  "license": "GPL-3.0-or-later",
+  "server": {
+    "type": "stdio",
+    "entry_point": "server/mcp_server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["server/mcp_server.py"]
+    }
+  },
+  "compatibility": {
+    "platforms": ["windows"],
+    "runtime": {
+      "name": "python",
+      "version": ">=3.10"
+    }
+  },
+  "display": {
+    "icon": "icon.png",
+    "categories": ["3d-modeling", "creative", "design", "cad"],
+    "tags": ["blender", "freecad", "gimp", "inkscape", "photoshop", "local", "tcp"]
+  }
+}

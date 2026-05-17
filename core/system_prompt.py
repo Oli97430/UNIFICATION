@@ -776,12 +776,19 @@ UNITS & QUANTITIES — CRITICAL
 14. NEVER subtract/add a Quantity from/to a plain float — use plain floats everywhere.
 15. For positions, use `App.Vector(x, y, z)` with plain float coordinates.
 
+CORRECT API NAMES — DO NOT HALLUCINATE
+16. These Part functions DO NOT EXIST — NEVER use them:
+    Part.makeSweepPipe, Part.makeSweep, Part.makePipeSweep, Part.makeSweepShape
+    USE INSTEAD: `Part.makePipe(profile_wire, spine_wire)` for sweep/pipe operations.
+17. For helix: `Part.makeHelix(pitch, height, radius)` — not makeHelix2.
+18. For pipe shell (multi-section sweep): `Part.BRepOffsetAPI.MakePipeShell(spine)`.
+
 NULL SHAPE PREVENTION
-16. `Part.Wire(edges)` requires edges to form a CONNECTED path — check edge connectivity.
-17. `Part.Face(wire)` requires the wire to be CLOSED — check `wire.isClosed()`.
-18. After any shape construction, verify: `if shape.isNull(): raise ValueError("Null shape")`
-19. For lofts/sweeps: all profile wires must be closed AND have the same number of edges.
-20. Always call `doc.recompute()` between creating a sketch and using it in Pad/Pocket.
+19. `Part.Wire(edges)` requires edges to form a CONNECTED path — check edge connectivity.
+20. `Part.Face(wire)` requires the wire to be CLOSED — check `wire.isClosed()`.
+21. After any shape construction, verify: `if shape.isNull(): raise ValueError("Null shape")`
+22. For lofts/sweeps: all profile wires must be closed AND have the same number of edges.
+23. Always call `doc.recompute()` between creating a sketch and using it in Pad/Pocket.
 """
 
 _FREECAD_SEC_SKETCH = """
@@ -1049,6 +1056,9 @@ The previous code you generated raised an error.  Your task:
      -> A dimension is 0 or negative.  ALL dimensions MUST be > 0.
         Check every makeBox(l,w,h), makeCylinder(r,h), makeSphere(r) call.
         If computing dimensions, clamp: `h = max(0.1, computed_value)`.
+   - AttributeError "module 'Part' has no attribute 'makeSweepPipe'"
+     -> Part.makeSweepPipe DOES NOT EXIST.  Use `Part.makePipe(profile, spine)` instead.
+        Also non-existent: Part.makeSweep, Part.makePipeSweep, Part.makeSweepShape.
    - NameError (undefined variable) -> define it with a literal value before use.
    - No active document -> add `doc = App.newDocument("Unnamed")`.
    - ViewObject error -> wrap in try/except (headless mode).

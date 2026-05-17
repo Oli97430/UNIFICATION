@@ -328,6 +328,34 @@ def _guard_view_object(code: str) -> str:
 
 
 # ------------------------------------------------------------------ #
+# 11. Fix hallucinated Part API names                                  #
+# ------------------------------------------------------------------ #
+
+# LLMs invent Part.makeSweepPipe, Part.makeSweep, Part.makeHelix2, etc.
+# Map them to real FreeCAD Part API equivalents.
+_FAKE_API_MAP: dict[str, str] = {
+    "Part.makeSweepPipe":   "Part.makePipe",
+    "Part.makeSweep":       "Part.makePipe",
+    "Part.makePipeSweep":   "Part.makePipe",
+    "Part.makeSweepShape":  "Part.makePipe",
+    "Part.makeHelix2":      "Part.makeHelix",
+    "Part.makePrism2":      "Part.makePrism",
+    "Part.makeRuledSurface2": "Part.makeRuledSurface",
+}
+
+_FAKE_API_RE = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in _FAKE_API_MAP) + r")\b"
+)
+
+
+def _fix_hallucinated_api(code: str) -> str:
+    """Replace non-existent Part.makeXxx calls with real equivalents."""
+    def _repl(m: re.Match) -> str:
+        return _FAKE_API_MAP[m.group(1)]
+    return _FAKE_API_RE.sub(_repl, code)
+
+
+# ------------------------------------------------------------------ #
 # PUBLIC API                                                          #
 # ------------------------------------------------------------------ #
 
@@ -339,17 +367,19 @@ def sanitize_freecad_code(code: str) -> str:
     2. Auto-inject ``doc = ...`` if missing
     3. Fix ``Units.RADIAN`` / ``Units.DEGREE`` hallucinations
     4. Strip ``App.Units.Quantity(10, "mm")`` → plain float ``10``
-    5. Normalise ``App.ActiveDocument.addObject`` to ``doc.addObject``
-    6. Guard ``makeFillet`` / ``makeChamfer`` with empty-edge check
-    7. Add null-shape guard comments
-    8. Guard ``ViewObject`` access for headless mode
-    9. Add OCC error context comment
-    10. Auto-inject ``doc.recompute()`` at end if missing
+    5. Fix hallucinated API names (makeSweepPipe → makePipe, etc.)
+    6. Normalise ``App.ActiveDocument.addObject`` to ``doc.addObject``
+    7. Guard ``makeFillet`` / ``makeChamfer`` with empty-edge check
+    8. Add null-shape guard comments
+    9. Guard ``ViewObject`` access for headless mode
+    10. Add OCC error context comment
+    11. Auto-inject ``doc.recompute()`` at end if missing
     """
     code = _auto_inject_imports(code)
     code = _auto_inject_doc(code)
     code = _fix_units_constants(code)
     code = _strip_quantity(code)
+    code = _fix_hallucinated_api(code)
     code = _fix_active_doc_usage(code)
     code = _guard_fillet_chamfer(code)
     code = _add_null_shape_guard(code)
